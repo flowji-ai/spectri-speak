@@ -138,6 +138,7 @@ enum HotkeyOption: String, CaseIterable {
     case rightCommand = "rightCommand"
     case hyperKey = "hyperKey"
     case ctrlOptionSpace = "ctrlOptionSpace"
+    case doubleTapControl = "doubleTapControl"
 
     var displayName: String {
         switch self {
@@ -146,7 +147,12 @@ enum HotkeyOption: String, CaseIterable {
         case .rightCommand: return "Right Command (hold)"
         case .hyperKey: return "Hyper Key (hold) – Ctrl+Opt+Cmd+Shift"
         case .ctrlOptionSpace: return "Ctrl+Option+Space (hold)"
+        case .doubleTapControl: return "Double-tap Control (toggle)"
         }
+    }
+
+    var isToggleMode: Bool {
+        self == .doubleTapControl
     }
 
     static var saved: HotkeyOption {

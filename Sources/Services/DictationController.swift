@@ -7,13 +7,17 @@ class DictationController {
     private let textInjector = TextInjector()
     private let dictionaryProcessor = DictionaryProcessor()
     private let appState = AppState.shared
+    private let audioFeedback = AudioFeedbackManager.shared
 
     let modelManager = ModelManager()
 
     private var currentRecordingURL: URL?
+    private var currentHotkeyOption: HotkeyOption = HotkeyOption.saved
 
     func updateHotkey(_ option: HotkeyOption) {
+        currentHotkeyOption = option
         hotkeyManager.updateHotkey(option)
+        configureHotkeyCallbacks()
     }
 
     /// Load the selected model (or specified model)
@@ -37,13 +41,41 @@ class DictationController {
             throw DictationError.accessibilityDenied
         }
 
-        hotkeyManager.onKeyDown = { [weak self] in
-            self?.startRecording()
-        }
+        configureHotkeyCallbacks()
+    }
 
-        hotkeyManager.onKeyUp = { [weak self] in
-            self?.stopRecordingAndTranscribe()
+    private func configureHotkeyCallbacks() {
+        if currentHotkeyOption.isToggleMode {
+            // Toggle mode: double-tap to start/stop
+            hotkeyManager.onKeyDown = nil
+            hotkeyManager.onKeyUp = nil
+            hotkeyManager.onToggle = { [weak self] isRecording in
+                if isRecording {
+                    self?.startRecordingWithFeedback()
+                } else {
+                    self?.stopRecordingAndTranscribeWithFeedback()
+                }
+            }
+        } else {
+            // Hold mode: hold to record, release to transcribe
+            hotkeyManager.onToggle = nil
+            hotkeyManager.onKeyDown = { [weak self] in
+                self?.startRecording()
+            }
+            hotkeyManager.onKeyUp = { [weak self] in
+                self?.stopRecordingAndTranscribe()
+            }
         }
+    }
+
+    private func startRecordingWithFeedback() {
+        audioFeedback.playRecordingStart()
+        startRecording()
+    }
+
+    private func stopRecordingAndTranscribeWithFeedback() {
+        audioFeedback.playRecordingStop()
+        stopRecordingAndTranscribe()
     }
 
     private func startRecording() {

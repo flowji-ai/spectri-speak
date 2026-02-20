@@ -6,6 +6,7 @@ enum RecordingState {
     case loadingModel
     case recording
     case transcribing
+    case refining
 }
 
 enum TranscriptionModel: String, CaseIterable {

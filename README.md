@@ -120,6 +120,7 @@ Speak2 runs as a menu bar app (no dock icon). Look for the microphone icon:
 - **Yellow spinning arrows** - Loading model
 - **Red mic** - Recording in progress
 - **Cyan spinner** - Transcribing
+- **Purple sparkles** - AI refinement in progress (Ollama)
 
 The menu shows a status line at the top indicating the current state (e.g., "Ready – Whisper (base.en)").
 
@@ -131,12 +132,13 @@ You can choose from several hotkey options. Sometimes external keyboards don't s
 
 #### Settings
 
-Click **Settings...** (⌘,) from the menu bar to open the unified settings window with four tabs:
+Click **Settings...** (⌘,) from the menu bar to open the unified settings window with five tabs:
 
 - **General** - Permissions, hotkey configuration, launch at login
 - **Models** - Download, manage, and delete speech recognition models; configure storage location
 - **Dictionary** - Manage your personal dictionary (add, edit, import/export words)
 - **History** - Browse, search, and export your transcription history
+- **AI Refine** - Configure optional Ollama-powered post-processing to clean up transcriptions
 
 #### Add Word
 Click **Add Word...** from the menu bar for quick dictionary word addition without opening the full settings window.
@@ -215,6 +217,42 @@ Speak2 keeps a history of your last 500 transcriptions, grouped by date (Today, 
 
 History is stored locally at `~/Library/Application Support/Speak2/transcription_history.json`.
 
+#### AI Text Refinement (Ollama)
+
+Speak2 can optionally send transcribed text to a local [Ollama](https://ollama.com) model for post-processing before pasting. This removes filler words, false starts, repetitions, and verbal noise — entirely on-device, no cloud required.
+
+**Requirements:**
+
+- [Ollama](https://ollama.com) installed and running locally
+- A model pulled in Ollama (e.g. `ollama pull gemma3:4b`)
+
+**Setup:**
+
+1. Open **Settings > AI Refine**
+2. Toggle **Enable AI Refinement** on
+3. Set the **Server URL** (default: `http://localhost:11434`)
+4. Set the **Model Name** to a model you have pulled (default: `gemma3:4b`)
+5. Click **Test Connection** to verify Ollama is reachable and the model responds
+6. Optionally customize the **Refinement Prompt** — leave it empty to use the built-in default
+
+**How it works:**
+
+After transcription (and dictionary post-processing), the text is sent to your local Ollama model with a cleanup prompt. The refined result is pasted instead of the raw transcription. If Ollama is unavailable or returns an error, Speak2 silently falls back to the original transcription so dictation is never interrupted.
+
+During refinement the menu bar icon shows a **purple sparkles** symbol and the status reads "Refining with AI…".
+
+**Recommended models:**
+
+| Model | Notes |
+|-------|-------|
+| `gemma3:4b` | Default — fast, good quality on Apple Silicon |
+| `llama3.2:3b` | Lightweight alternative |
+| Any instruction-tuned model | Works with any model available in your Ollama instance |
+
+**Custom prompt:**
+
+The default prompt instructs the model to clean up transcription without adding commentary. You can replace it with anything — for example a prompt that formats output as bullet points, translates to another language, or applies domain-specific corrections. Leave the field empty to restore the default.
+
 #### Launch at Login
 Toggle this option in **Settings > General**.
 
@@ -229,6 +267,7 @@ Click the menu bar icon and click "Quit Speak2".
 - **WhisperTranscriber** - Runs WhisperKit on-device for speech-to-text
 - **ParakeetTranscriber** - Runs FluidAudio/Parakeet on-device for speech-to-text
 - **DictionaryProcessor** - Post-processes transcription using personal dictionary (alias replacement + phonetic matching)
+- **OllamaRefiner** - Optionally sends transcription to a local Ollama model for AI-powered cleanup (filler word removal, false starts, etc.); falls back to original text on any error
 - **TranscriptionHistoryStorage** - Persists transcription history to local JSON (up to 500 entries)
 - **TextInjector** - Copies transcription to clipboard and simulates Cmd+V to paste
 

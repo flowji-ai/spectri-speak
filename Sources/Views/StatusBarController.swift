@@ -47,6 +47,8 @@ class StatusBarController {
             statusText = "Recording..."
         case .transcribing:
             statusText = "Transcribing..."
+        case .refining:
+            statusText = "Refining with AI..."
         }
 
         let statusMenuItem = NSMenuItem(title: statusText, action: nil, keyEquivalent: "")
@@ -257,6 +259,9 @@ class StatusBarController {
         case .transcribing:
             symbolName = "ellipsis.circle"
             color = .systemCyan
+        case .refining:
+            symbolName = "sparkles"
+            color = .systemPurple
         }
 
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)

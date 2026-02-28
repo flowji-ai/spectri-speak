@@ -5,6 +5,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case models = "Models"
     case dictionary = "Dictionary"
     case history = "History"
+    case aiRefine = "AI Refine"
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .models: return "waveform"
         case .dictionary: return "character.book.closed"
         case .history: return "clock.arrow.circlepath"
+        case .aiRefine: return "sparkles"
         }
     }
 }
@@ -50,6 +52,8 @@ struct SettingsView: View {
         case .history:
             HistorySettingsView()
                 .environmentObject(AppState.shared.historyState)
+        case .aiRefine:
+            AIRefineSettingsView()
         }
     }
 }

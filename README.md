@@ -39,20 +39,30 @@ Download the latest .dmg from the [releases](https://github.com/zachswift615/spe
 
 ```bash
 git clone https://github.com/zachswift615/speak2.git
-cd speak2
-swift build -c release
+cd speak2/Speak2
+
+# Install Metal toolchain (required once for MLX GPU shaders)
+xcodebuild -downloadComponent MetalToolchain
+
+# Build
+xcodebuild build -scheme Speak2 -configuration Release -destination 'platform=macOS' \
+  -derivedDataPath .derivedData
 ```
+
+> **Note:** You must use `xcodebuild` (not `swift build`) because the MLX dependency requires Xcode's build system to compile Metal shaders. `swift build` will compile but the app will crash at runtime when the built-in LLM feature is used.
 
 ### Run
 
 ```bash
-swift run
+.derivedData/Build/Products/Release/Speak2
 ```
 
-Or run the release binary directly:
+### Tests
+
+Tests can still use the Swift CLI since they don't exercise Metal:
 
 ```bash
-.build/release/Speak2
+swift test
 ```
 
 ## First Launch Setup
@@ -81,7 +91,7 @@ Then find speak2 in the list and toggle the permission switch on and authenticat
 **Option A:** Add Speak2 directly
 1. Open **System Settings > Privacy & Security > Accessibility**
 2. Click the **+** button
-3. Press **Cmd+Shift+G** and paste: `~/.build/release/Speak2` (or wherever you built it)
+3. Press **Cmd+Shift+G** and navigate to the built binary (e.g. `.derivedData/Build/Products/Release/Speak2`)
 4. Select the Speak2 executable and enable it
 
 **Option B:** Enable Terminal (easier for development)
@@ -120,6 +130,7 @@ Speak2 runs as a menu bar app (no dock icon). Look for the microphone icon:
 - **Yellow spinning arrows** - Loading model
 - **Red mic** - Recording in progress
 - **Cyan spinner** - Transcribing
+- **Purple sparkles** - AI refinement in progress (Ollama)
 
 The menu shows a status line at the top indicating the current state (e.g., "Ready – Whisper (base.en)").
 
@@ -131,12 +142,13 @@ You can choose from several hotkey options. Sometimes external keyboards don't s
 
 #### Settings
 
-Click **Settings...** (⌘,) from the menu bar to open the unified settings window with four tabs:
+Click **Settings...** (⌘,) from the menu bar to open the unified settings window with five tabs:
 
 - **General** - Permissions, hotkey configuration, launch at login
 - **Models** - Download, manage, and delete speech recognition models; configure storage location
 - **Dictionary** - Manage your personal dictionary (add, edit, import/export words)
 - **History** - Browse, search, and export your transcription history
+- **AI Refine** - Configure optional Ollama-powered post-processing to clean up transcriptions
 
 #### Add Word
 Click **Add Word...** from the menu bar for quick dictionary word addition without opening the full settings window.
@@ -215,6 +227,45 @@ Speak2 keeps a history of your last 500 transcriptions, grouped by date (Today, 
 
 History is stored locally at `~/Library/Application Support/Speak2/transcription_history.json`.
 
+#### AI Text Refinement
+
+Speak2 can optionally clean up transcribed text using an LLM before pasting. This removes filler words, false starts, repetitions, and verbal noise — entirely on-device, no cloud required.
+
+Open **Settings > AI Refine** to choose a mode:
+
+| Mode | Description |
+|------|-------------|
+| **Off** | No refinement — raw transcription is pasted directly |
+| **Built-in (recommended)** | Downloads a small LLM (~1.1 GB) that runs locally via MLX |
+| **External Server (Ollama)** | Sends text to a local Ollama instance for processing |
+
+**Built-in mode:**
+
+1. Select **Built-in (recommended)** in Settings > AI Refine
+2. Click **Download Model** — downloads Qwen 2.5 1.5B Instruct (~1.1 GB) once
+3. A green "Ready" checkmark appears when the model is cached
+
+No additional software required. The model downloads to `~/Library/Caches/huggingface/hub/` and runs on Apple Silicon GPU via MLX.
+
+**External Server (Ollama) mode:**
+
+For users who prefer to use their own model via [Ollama](https://ollama.com):
+
+1. Install and run [Ollama](https://ollama.com), pull a model (e.g. `ollama pull gemma3:4b`)
+2. Select **External Server (Ollama)** in Settings > AI Refine
+3. Set the **Server URL** (default: `http://localhost:11434`) and **Model Name**
+4. Click **Test Connection** to verify
+
+**How it works:**
+
+After transcription (and dictionary post-processing), the text is sent to the selected LLM with a cleanup prompt. The refined result is pasted instead of the raw transcription. If refinement fails for any reason, Speak2 silently falls back to the original transcription so dictation is never interrupted.
+
+During refinement the menu bar icon shows a **purple sparkles** symbol and the status reads "Refining with AI…".
+
+**Custom prompt:**
+
+The default prompt instructs the model to clean up transcription without adding commentary. You can replace it with anything — for example a prompt that formats output as bullet points, translates to another language, or applies domain-specific corrections. Leave the field empty to restore the default. The prompt is shared between both built-in and external modes.
+
 #### Launch at Login
 Toggle this option in **Settings > General**.
 
@@ -223,12 +274,14 @@ Click the menu bar icon and click "Quit Speak2".
 
 ## How It Works
 
-- **HotkeyManager** - Detects hotkey press/release using CGEvent tap
+- **HotkeyManager** - Detects hotkey press/release (hold mode) or double-press (toggle mode) using CGEvent tap
 - **AudioRecorder** - Captures microphone audio at 16kHz mono PCM
 - **ModelManager** - Handles model downloading, loading, and switching
 - **WhisperTranscriber** - Runs WhisperKit on-device for speech-to-text
 - **ParakeetTranscriber** - Runs FluidAudio/Parakeet on-device for speech-to-text
 - **DictionaryProcessor** - Post-processes transcription using personal dictionary (alias replacement + phonetic matching)
+- **MLXRefiner** - Built-in LLM refinement using MLX (Qwen 2.5 1.5B Instruct); downloads and runs on-device
+- **OllamaRefiner** - External LLM refinement via a local Ollama server; falls back to original text on any error
 - **TranscriptionHistoryStorage** - Persists transcription history to local JSON (up to 500 entries)
 - **TextInjector** - Copies transcription to clipboard and simulates Cmd+V to paste
 
@@ -287,6 +340,7 @@ Speak2 automatically detects permission changes and starts the hotkey listener. 
 - Swift + SwiftUI
 - [WhisperKit](https://github.com/argmaxinc/WhisperKit) - Apple's optimized Whisper implementation
 - [FluidAudio](https://github.com/FluidInference/FluidAudio) - Parakeet speech recognition for Apple Silicon
+- [MLX Swift](https://github.com/ml-explore/mlx-swift-lm) - On-device LLM inference for built-in text refinement
 - AVFoundation for audio capture
 - CGEvent for global hotkey detection
 

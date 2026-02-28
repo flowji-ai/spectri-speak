@@ -6,6 +6,7 @@ enum RecordingState {
     case loadingModel
     case recording
     case transcribing
+    case refining
 }
 
 enum TranscriptionModel: String, CaseIterable {
@@ -139,26 +140,81 @@ enum HotkeyOption: String, CaseIterable {
     case hyperKey = "hyperKey"
     case ctrlOptionSpace = "ctrlOptionSpace"
 
-    var displayName: String {
+    /// The key name without mode suffix (e.g. "Fn", "Right Option").
+    var keyName: String {
         switch self {
-        case .fnKey: return "Fn (hold)"
-        case .rightOption: return "Right Option (hold)"
-        case .rightCommand: return "Right Command (hold)"
-        case .hyperKey: return "Hyper Key (hold) – Ctrl+Opt+Cmd+Shift"
-        case .ctrlOptionSpace: return "Ctrl+Option+Space (hold)"
+        case .fnKey: return "Fn"
+        case .rightOption: return "Right Option"
+        case .rightCommand: return "Right Command"
+        case .hyperKey: return "Hyper Key – Ctrl+Opt+Cmd+Shift"
+        case .ctrlOptionSpace: return "Ctrl+Option+Space"
         }
+    }
+
+    /// Display name including the current mode suffix.
+    var displayName: String {
+        let suffix = Self.isToggleMode ? "(press twice)" : "(hold)"
+        return "\(keyName) \(suffix)"
+    }
+
+    /// Whether the hotkey operates in toggle (press-twice) mode vs hold mode.
+    static var isToggleMode: Bool {
+        get { UserDefaults.standard.bool(forKey: "hotkeyToggleMode") }
+        set { UserDefaults.standard.set(newValue, forKey: "hotkeyToggleMode") }
     }
 
     static var saved: HotkeyOption {
         get {
-            if let raw = UserDefaults.standard.string(forKey: "hotkeyOption"),
-               let option = HotkeyOption(rawValue: raw) {
-                return option
+            if let raw = UserDefaults.standard.string(forKey: "hotkeyOption") {
+                // Migration: doubleTapControl → fnKey + toggle mode
+                if raw == "doubleTapControl" {
+                    isToggleMode = true
+                    let migrated = HotkeyOption.fnKey
+                    UserDefaults.standard.set(migrated.rawValue, forKey: "hotkeyOption")
+                    return migrated
+                }
+                if let option = HotkeyOption(rawValue: raw) {
+                    return option
+                }
             }
             return .fnKey
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: "hotkeyOption")
+        }
+    }
+}
+
+enum RefinementMode: String, CaseIterable {
+    case off
+    case builtIn
+    case external
+
+    var displayName: String {
+        switch self {
+        case .off: return "Off"
+        case .builtIn: return "Built-in (recommended)"
+        case .external: return "External Server (Ollama)"
+        }
+    }
+
+    static var saved: RefinementMode {
+        get {
+            if let raw = UserDefaults.standard.string(forKey: "refinementMode"),
+               let mode = RefinementMode(rawValue: raw) {
+                return mode
+            }
+            // Migration: if legacy ollamaEnabled is true and no refinementMode key exists
+            if UserDefaults.standard.object(forKey: "refinementMode") == nil,
+               UserDefaults.standard.bool(forKey: "ollamaEnabled") {
+                let migrated = RefinementMode.external
+                UserDefaults.standard.set(migrated.rawValue, forKey: "refinementMode")
+                return migrated
+            }
+            return .off
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "refinementMode")
         }
     }
 }
@@ -173,6 +229,8 @@ class AppState: ObservableObject {
     @Published var hasMicrophonePermission: Bool = false
     @Published var modelDownloadProgress: Double = 0.0
     @Published var lastError: String? = nil
+    @Published var isLLMModelDownloading: Bool = false
+    @Published var llmDownloadProgress: Double = 0.0
 
     // Model selection
     @Published var selectedModel: TranscriptionModel = TranscriptionModel.saved

@@ -119,6 +119,26 @@ class DictationController {
                     text = dictionaryProcessor.process(text, using: entries, language: selectedLanguage)
                 }
 
+                // AI refinement via Ollama (if enabled)
+                let ollamaEnabled = UserDefaults.standard.bool(forKey: "ollamaEnabled")
+                let ollamaURL = UserDefaults.standard.string(forKey: "ollamaURL") ?? "http://localhost:11434"
+                let ollamaModel = UserDefaults.standard.string(forKey: "ollamaModel") ?? "gemma3:4b"
+                let ollamaPrompt = UserDefaults.standard.string(forKey: "ollamaPrompt")
+                if ollamaEnabled && !ollamaURL.isEmpty && !ollamaModel.isEmpty {
+                    await MainActor.run { appState.recordingState = .refining }
+                    do {
+                        text = try await OllamaRefiner.refine(
+                            text: text,
+                            baseURL: ollamaURL,
+                            model: ollamaModel,
+                            customPrompt: ollamaPrompt
+                        )
+                    } catch {
+                        // Refinement is best-effort: log and continue with original text
+                        print("Ollama refinement skipped: \(error.localizedDescription)")
+                    }
+                }
+
                 // Add to transcription history
                 let historyEntry = TranscriptionHistoryEntry(
                     text: TranscriptionHistoryStorage.truncateIfNeeded(text),

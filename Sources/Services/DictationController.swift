@@ -8,15 +8,19 @@ class DictationController {
     private let dictionaryProcessor = DictionaryProcessor()
     private let appState = AppState.shared
     private let audioFeedback = AudioFeedbackManager.shared
+    private var mlxRefiner: MLXRefiner?
 
     let modelManager = ModelManager()
 
     private var currentRecordingURL: URL?
-    private var currentHotkeyOption: HotkeyOption = HotkeyOption.saved
 
     func updateHotkey(_ option: HotkeyOption) {
-        currentHotkeyOption = option
         hotkeyManager.updateHotkey(option)
+        configureHotkeyCallbacks()
+    }
+
+    func updateToggleMode(_ isToggle: Bool) {
+        hotkeyManager.updateToggleMode(isToggle)
         configureHotkeyCallbacks()
     }
 
@@ -45,7 +49,7 @@ class DictationController {
     }
 
     private func configureHotkeyCallbacks() {
-        if currentHotkeyOption.isToggleMode {
+        if HotkeyOption.isToggleMode {
             // Toggle mode: double-tap to start/stop
             hotkeyManager.onKeyDown = nil
             hotkeyManager.onKeyUp = nil
@@ -120,24 +124,45 @@ class DictationController {
                     text = dictionaryProcessor.process(text, using: entries, language: selectedLanguage)
                 }
 
-                // AI refinement via Ollama (if enabled)
-                let ollamaEnabled = UserDefaults.standard.bool(forKey: "ollamaEnabled")
-                let ollamaURL = UserDefaults.standard.string(forKey: "ollamaURL") ?? "http://localhost:11434"
-                let ollamaModel = UserDefaults.standard.string(forKey: "ollamaModel") ?? "gemma3:4b"
-                let ollamaPrompt = UserDefaults.standard.string(forKey: "ollamaPrompt")
-                if ollamaEnabled && !ollamaURL.isEmpty && !ollamaModel.isEmpty {
+                // AI refinement (if enabled)
+                let refinementMode = RefinementMode.saved
+                let customPrompt = UserDefaults.standard.string(forKey: "ollamaPrompt")
+
+                switch refinementMode {
+                case .builtIn:
                     await MainActor.run { appState.recordingState = .refining }
                     do {
-                        text = try await OllamaRefiner.refine(
-                            text: text,
-                            baseURL: ollamaURL,
-                            model: ollamaModel,
-                            customPrompt: ollamaPrompt
-                        )
+                        if mlxRefiner == nil {
+                            mlxRefiner = MLXRefiner()
+                        }
+                        let refiner = mlxRefiner!
+                        if await !refiner.isModelLoaded {
+                            try await refiner.loadModel { _ in }
+                        }
+                        text = try await refiner.refine(text: text, customPrompt: customPrompt)
                     } catch {
-                        // Refinement is best-effort: log and continue with original text
-                        print("Ollama refinement skipped: \(error.localizedDescription)")
+                        print("Built-in refinement skipped: \(error.localizedDescription)")
                     }
+
+                case .external:
+                    let ollamaURL = UserDefaults.standard.string(forKey: "ollamaURL") ?? "http://localhost:11434"
+                    let ollamaModel = UserDefaults.standard.string(forKey: "ollamaModel") ?? "gemma3:4b"
+                    if !ollamaURL.isEmpty && !ollamaModel.isEmpty {
+                        await MainActor.run { appState.recordingState = .refining }
+                        do {
+                            text = try await OllamaRefiner.refine(
+                                text: text,
+                                baseURL: ollamaURL,
+                                model: ollamaModel,
+                                customPrompt: customPrompt
+                            )
+                        } catch {
+                            print("Ollama refinement skipped: \(error.localizedDescription)")
+                        }
+                    }
+
+                case .off:
+                    break
                 }
 
                 // Add to transcription history
@@ -168,6 +193,15 @@ class DictationController {
             }
 
             audioRecorder.cleanup()
+        }
+    }
+
+    func updateRefinementMode(_ mode: RefinementMode) {
+        if mode != .builtIn, let refiner = mlxRefiner {
+            Task {
+                await refiner.unloadModel()
+            }
+            mlxRefiner = nil
         }
     }
 

@@ -5,6 +5,7 @@ import ServiceManagement
 struct GeneralSettingsView: View {
     @ObservedObject private var appState = AppState.shared
     @State private var selectedHotkey: HotkeyOption = HotkeyOption.saved
+    @State private var isToggleMode: Bool = HotkeyOption.isToggleMode
     @State private var launchAtLogin: Bool = false
 
     var body: some View {
@@ -41,7 +42,7 @@ struct GeneralSettingsView: View {
 
                         Picker("Hotkey", selection: $selectedHotkey) {
                             ForEach(HotkeyOption.allCases, id: \.self) { option in
-                                Text(option.displayName).tag(option)
+                                Text(option.keyName).tag(option)
                             }
                         }
                         .pickerStyle(.radioGroup)
@@ -53,6 +54,21 @@ struct GeneralSettingsView: View {
                                 userInfo: ["hotkey": newValue]
                             )
                         }
+
+                        Divider()
+
+                        Toggle("Press twice (toggle)", isOn: $isToggleMode)
+                            .onChange(of: isToggleMode) { _, newValue in
+                                HotkeyOption.isToggleMode = newValue
+                                NotificationCenter.default.post(
+                                    name: .hotkeyToggleModeChanged,
+                                    object: nil
+                                )
+                            }
+
+                        Text("When enabled, press the hotkey twice quickly to start recording, and twice again to stop. When disabled, hold the key to record.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -76,8 +92,8 @@ struct GeneralSettingsView: View {
     }
 
     private var hotkeyInstructionText: String {
-        if selectedHotkey.isToggleMode {
-            return "Double-tap this key to start recording, double-tap again to transcribe"
+        if isToggleMode {
+            return "Press this key twice to start recording, press twice again to transcribe"
         } else {
             return "Hold this key to start recording, release to transcribe"
         }
@@ -185,4 +201,5 @@ struct PermissionSettingsRow: View {
 
 extension Notification.Name {
     static let hotkeyChanged = Notification.Name("hotkeyChanged")
+    static let hotkeyToggleModeChanged = Notification.Name("hotkeyToggleModeChanged")
 }

@@ -8,12 +8,18 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.9.0"),
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.7.9")
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.7.9"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "2.29.0")
     ],
     targets: [
         .executableTarget(
             name: "Speak2",
-            dependencies: ["WhisperKit", "FluidAudio"],
+            dependencies: [
+                "WhisperKit",
+                "FluidAudio",
+                .product(name: "MLXLLM", package: "mlx-swift-lm"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm")
+            ],
             path: "Sources",
             resources: [
                 .process("../Resources")

@@ -78,9 +78,10 @@ class StatusBarController {
 
         // Hotkey submenu
         let hotkeyMenu = NSMenu()
+        let modeSuffix = HotkeyOption.isToggleMode ? "(press twice)" : "(hold)"
         for option in HotkeyOption.allCases {
             let item = NSMenuItem(
-                title: option.displayName,
+                title: "\(option.keyName) \(modeSuffix)",
                 action: #selector(hotkeySelected(_:)),
                 keyEquivalent: ""
             )
@@ -89,6 +90,17 @@ class StatusBarController {
             item.state = (option == HotkeyOption.saved) ? .on : .off
             hotkeyMenu.addItem(item)
         }
+
+        hotkeyMenu.addItem(NSMenuItem.separator())
+
+        let toggleItem = NSMenuItem(
+            title: "Press twice (toggle)",
+            action: #selector(togglePressTwice(_:)),
+            keyEquivalent: ""
+        )
+        toggleItem.target = self
+        toggleItem.state = HotkeyOption.isToggleMode ? .on : .off
+        hotkeyMenu.addItem(toggleItem)
 
         let hotkeyItem = NSMenuItem(title: "Hotkey", action: nil, keyEquivalent: "")
         hotkeyItem.submenu = hotkeyMenu
@@ -181,6 +193,13 @@ class StatusBarController {
 
         // Update the hotkey
         dictationController?.updateHotkey(option)
+    }
+
+    @objc private func togglePressTwice(_ sender: NSMenuItem) {
+        let newValue = !HotkeyOption.isToggleMode
+        HotkeyOption.isToggleMode = newValue
+        NotificationCenter.default.post(name: .hotkeyToggleModeChanged, object: nil)
+        setupMenu()
     }
 
     @objc private func showQuickAdd() {

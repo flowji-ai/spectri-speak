@@ -91,6 +91,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
+        // Listen for toggle mode changes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleToggleModeChanged),
+            name: .hotkeyToggleModeChanged,
+            object: nil
+        )
+
         // Observe setup completion to start dictation
         observeSetupCompletion()
 
@@ -134,6 +142,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let hotkey = notification.userInfo?["hotkey"] as? HotkeyOption else { return }
         Task { @MainActor in
             dictationController?.updateHotkey(hotkey)
+        }
+    }
+
+    @objc private func handleToggleModeChanged() {
+        Task { @MainActor in
+            dictationController?.updateToggleMode(HotkeyOption.isToggleMode)
         }
     }
 

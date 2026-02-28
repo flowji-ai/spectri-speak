@@ -40,9 +40,15 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
 
+      - name: Install Metal Toolchain
+        run: |
+          xcodebuild -downloadComponent MetalToolchain || true
+
       - name: Build Release
         run: |
-          swift build -c release
+          xcodebuild build -scheme Speak2 -configuration Release -destination 'platform=macOS' \
+            -derivedDataPath .derivedData \
+            SWIFT_COMPILATION_MODE=wholemodule
 
       - name: Create App Bundle
         run: |
@@ -53,6 +59,12 @@ jobs:
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
+          # Sign embedded frameworks first
+          if [ -d "build/$APP_NAME.app/Contents/Frameworks" ]; then
+            find "build/$APP_NAME.app/Contents/Frameworks" -name "*.framework" -exec \
+              codesign --force --options runtime --sign "$SIGNING_IDENTITY" {} \;
+          fi
+
           # Sign the app bundle
           codesign --force --deep --options runtime \
             --sign "$SIGNING_IDENTITY" \

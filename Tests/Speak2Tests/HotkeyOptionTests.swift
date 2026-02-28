@@ -3,57 +3,53 @@ import XCTest
 
 final class HotkeyOptionTests: XCTestCase {
 
-    // MARK: - Toggle Mode
-
-    func testDoubleTapControlIsToggleMode() {
-        XCTAssertTrue(HotkeyOption.doubleTapControl.isToggleMode)
+    override func tearDown() {
+        super.tearDown()
+        // Clean up UserDefaults after each test
+        UserDefaults.standard.removeObject(forKey: "hotkeyOption")
+        UserDefaults.standard.removeObject(forKey: "hotkeyToggleMode")
     }
 
-    func testFnKeyIsNotToggleMode() {
-        XCTAssertFalse(HotkeyOption.fnKey.isToggleMode)
+    // MARK: - Toggle Mode (static property)
+
+    func testIsToggleModeDefaultsFalse() {
+        UserDefaults.standard.removeObject(forKey: "hotkeyToggleMode")
+        XCTAssertFalse(HotkeyOption.isToggleMode)
     }
 
-    func testRightOptionIsNotToggleMode() {
-        XCTAssertFalse(HotkeyOption.rightOption.isToggleMode)
+    func testIsToggleModeRoundTrips() {
+        HotkeyOption.isToggleMode = true
+        XCTAssertTrue(HotkeyOption.isToggleMode)
+
+        HotkeyOption.isToggleMode = false
+        XCTAssertFalse(HotkeyOption.isToggleMode)
     }
 
-    func testRightCommandIsNotToggleMode() {
-        XCTAssertFalse(HotkeyOption.rightCommand.isToggleMode)
-    }
+    // MARK: - Key Names
 
-    func testHyperKeyIsNotToggleMode() {
-        XCTAssertFalse(HotkeyOption.hyperKey.isToggleMode)
-    }
-
-    func testCtrlOptionSpaceIsNotToggleMode() {
-        XCTAssertFalse(HotkeyOption.ctrlOptionSpace.isToggleMode)
-    }
-
-    func testOnlyDoubleTapControlIsToggleMode() {
-        let toggleOptions = HotkeyOption.allCases.filter { $0.isToggleMode }
-        XCTAssertEqual(toggleOptions.count, 1)
-        XCTAssertEqual(toggleOptions.first, .doubleTapControl)
+    func testKeyNames() {
+        XCTAssertEqual(HotkeyOption.fnKey.keyName, "Fn")
+        XCTAssertEqual(HotkeyOption.rightOption.keyName, "Right Option")
+        XCTAssertEqual(HotkeyOption.rightCommand.keyName, "Right Command")
+        XCTAssertTrue(HotkeyOption.hyperKey.keyName.contains("Hyper"))
+        XCTAssertTrue(HotkeyOption.ctrlOptionSpace.keyName.contains("Ctrl"))
     }
 
     // MARK: - Display Names
 
-    func testDoubleTapControlDisplayName() {
-        XCTAssertEqual(HotkeyOption.doubleTapControl.displayName, "Double-tap Control (toggle)")
-    }
-
-    func testAllHoldModesDisplayNamesContainHold() {
-        let holdOptions = HotkeyOption.allCases.filter { !$0.isToggleMode }
-        for option in holdOptions {
+    func testDisplayNameContainsHoldWhenNotToggleMode() {
+        HotkeyOption.isToggleMode = false
+        for option in HotkeyOption.allCases {
             XCTAssertTrue(option.displayName.contains("hold"),
                           "\(option.rawValue) display name should contain 'hold' but was '\(option.displayName)'")
         }
     }
 
-    func testToggleModeDisplayNameContainsToggle() {
-        let toggleOptions = HotkeyOption.allCases.filter { $0.isToggleMode }
-        for option in toggleOptions {
-            XCTAssertTrue(option.displayName.contains("toggle"),
-                          "\(option.rawValue) display name should contain 'toggle' but was '\(option.displayName)'")
+    func testDisplayNameContainsPressTwiceWhenToggleMode() {
+        HotkeyOption.isToggleMode = true
+        for option in HotkeyOption.allCases {
+            XCTAssertTrue(option.displayName.contains("press twice"),
+                          "\(option.rawValue) display name should contain 'press twice' but was '\(option.displayName)'")
         }
     }
 
@@ -65,10 +61,6 @@ final class HotkeyOptionTests: XCTestCase {
 
     // MARK: - Raw Values
 
-    func testDoubleTapControlRawValue() {
-        XCTAssertEqual(HotkeyOption.doubleTapControl.rawValue, "doubleTapControl")
-    }
-
     func testRoundTripFromRawValue() {
         for option in HotkeyOption.allCases {
             let roundTripped = HotkeyOption(rawValue: option.rawValue)
@@ -79,7 +71,32 @@ final class HotkeyOptionTests: XCTestCase {
     // MARK: - CaseIterable
 
     func testAllCasesCount() {
-        // 5 hold modes + 1 toggle mode = 6 total
-        XCTAssertEqual(HotkeyOption.allCases.count, 6)
+        // 5 hotkey options (doubleTapControl removed)
+        XCTAssertEqual(HotkeyOption.allCases.count, 5)
+    }
+
+    // MARK: - Migration
+
+    func testDoubleTapControlMigratesToFnKeyWithToggle() {
+        UserDefaults.standard.set("doubleTapControl", forKey: "hotkeyOption")
+        HotkeyOption.isToggleMode = false
+
+        let saved = HotkeyOption.saved
+        XCTAssertEqual(saved, .fnKey)
+        XCTAssertTrue(HotkeyOption.isToggleMode)
+        // Verify the raw value was updated
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "hotkeyOption"), "fn")
+    }
+
+    func testSavedDefaultsToFnKey() {
+        UserDefaults.standard.removeObject(forKey: "hotkeyOption")
+        XCTAssertEqual(HotkeyOption.saved, .fnKey)
+    }
+
+    func testSavedRoundTrips() {
+        for option in HotkeyOption.allCases {
+            HotkeyOption.saved = option
+            XCTAssertEqual(HotkeyOption.saved, option)
+        }
     }
 }

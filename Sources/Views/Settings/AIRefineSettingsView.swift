@@ -131,14 +131,13 @@ struct AIRefineSettingsView: View {
         testStatus = .testing
         Task {
             do {
-                let result = try await OllamaRefiner.refine(
+                _ = try await OllamaRefiner.refine(
                     text: "hello world",
                     baseURL: ollamaURL,
                     model: ollamaModel
                 )
                 await MainActor.run {
                     testStatus = .success("Connected — got response")
-                    _ = result
                 }
             } catch {
                 await MainActor.run {

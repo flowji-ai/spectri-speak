@@ -163,8 +163,13 @@ class HotkeyManager {
         return Unmanaged.passRetained(event)
     }
 
+    /// Reset toggle recording state (e.g. when recording fails and state is out of sync).
+    func resetToggleState() {
+        isToggleRecording = false
+    }
+
     private func handleControlRelease() {
-        let now = Date().timeIntervalSince1970
+        let now = ProcessInfo.processInfo.systemUptime
 
         doubleTapResetTimer?.invalidate()
         doubleTapResetTimer = nil

@@ -86,6 +86,7 @@ class DictationController {
             appState.recordingState = .recording
         } catch {
             appState.lastError = "Failed to start recording: \(error.localizedDescription)"
+            hotkeyManager.resetToggleState()
         }
     }
 
@@ -162,6 +163,7 @@ class DictationController {
                 await MainActor.run {
                     appState.lastError = "Transcription failed: \(error.localizedDescription)"
                     appState.recordingState = .idle
+                    hotkeyManager.resetToggleState()
                 }
             }
 

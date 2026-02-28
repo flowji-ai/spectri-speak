@@ -5,16 +5,37 @@ struct OllamaRefiner {
     /// Falls back to the original text on any error.
     static let defaultPrompt = "Clean up this voice transcription. Remove filler words, false starts, repetitions, and verbal noise. Return only the final intended message as plain text with no explanation, preamble, or quotation marks:"
 
-    static func refine(text: String, baseURL: String, model: String, customPrompt: String? = nil) async throws -> String {
+    /// Build the full prompt from user text and an optional custom prompt.
+    static func buildPrompt(text: String, customPrompt: String? = nil) -> String {
+        let promptBase = customPrompt.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } ?? defaultPrompt
+        return "\(promptBase)\n\n\(text)"
+    }
+
+    /// Build and validate the API URL from a base URL string.
+    static func buildAPIURL(from baseURL: String) throws -> URL {
         let trimmedURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
         guard let apiURL = URL(string: "\(trimmedURL)/api/generate") else {
             throw OllamaError.invalidURL
         }
+        return apiURL
+    }
 
-        let promptBase = customPrompt.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } ?? OllamaRefiner.defaultPrompt
-        let prompt = "\(promptBase)\n\n\(text)"
+    /// Parse the Ollama JSON response, returning the refined text or falling back to the original.
+    static func parseResponse(data: Data, originalText: String) throws -> String {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let refined = json["response"] as? String else {
+            throw OllamaError.invalidResponse
+        }
+
+        let trimmed = refined.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? originalText : trimmed
+    }
+
+    static func refine(text: String, baseURL: String, model: String, customPrompt: String? = nil) async throws -> String {
+        let apiURL = try buildAPIURL(from: baseURL)
+        let prompt = buildPrompt(text: text, customPrompt: customPrompt)
 
         let body: [String: Any] = [
             "model": model,
@@ -34,13 +55,7 @@ struct OllamaRefiner {
             throw OllamaError.requestFailed
         }
 
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let refined = json["response"] as? String else {
-            throw OllamaError.invalidResponse
-        }
-
-        let trimmed = refined.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? text : trimmed
+        return try parseResponse(data: data, originalText: text)
     }
 }
 

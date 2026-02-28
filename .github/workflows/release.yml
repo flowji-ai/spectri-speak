@@ -59,13 +59,7 @@ jobs:
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
-          # Sign embedded frameworks first
-          if [ -d "build/$APP_NAME.app/Contents/Frameworks" ]; then
-            find "build/$APP_NAME.app/Contents/Frameworks" -name "*.framework" -exec \
-              codesign --force --options runtime --sign "$SIGNING_IDENTITY" {} \;
-          fi
-
-          # Sign the app bundle
+          # Sign the app bundle (--deep covers embedded bundles)
           codesign --force --deep --options runtime \
             --sign "$SIGNING_IDENTITY" \
             --entitlements Sources/Speak2.entitlements \

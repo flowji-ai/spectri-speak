@@ -34,7 +34,7 @@ struct GeneralSettingsView: View {
                 // Hotkey Section
                 SettingsSection(title: "Trigger Hotkey") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Hold this key to start recording, release to transcribe")
+                        Text(hotkeyInstructionText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 4)
@@ -72,6 +72,14 @@ struct GeneralSettingsView: View {
         .onAppear {
             checkPermissions()
             launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
+    }
+
+    private var hotkeyInstructionText: String {
+        if selectedHotkey.isToggleMode {
+            return "Double-tap this key to start recording, double-tap again to transcribe"
+        } else {
+            return "Hold this key to start recording, release to transcribe"
         }
     }
 

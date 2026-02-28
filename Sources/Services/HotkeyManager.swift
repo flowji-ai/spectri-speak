@@ -11,9 +11,19 @@ class HotkeyManager {
     private let kVK_RightOption: Int64 = 0x3D
     private let kVK_RightCommand: Int64 = 0x36
     private let kVK_Space: Int64 = 0x31
+    private let kVK_LeftControl: Int64 = 0x3B
+    private let kVK_RightControl: Int64 = 0x3E
+
+    // Double-tap detection state
+    private let doubleTapWindow: TimeInterval = 0.4
+    private var lastControlTapTime: TimeInterval?
+    private var isControlCurrentlyHeld: Bool = false
+    private var doubleTapResetTimer: Timer?
+    private var isToggleRecording: Bool = false
 
     var onKeyDown: (() -> Void)?
     var onKeyUp: (() -> Void)?
+    var onToggle: ((Bool) -> Void)?
 
     init(hotkeyOption: HotkeyOption = HotkeyOption.saved) {
         self.hotkeyOption = hotkeyOption
@@ -118,9 +128,26 @@ class HotkeyManager {
                 // Keep active while modifiers held and we're in active state
                 hotkeyPressed = true
             }
+
+        case .doubleTapControl:
+            if type == .flagsChanged {
+                let isControlKey = keyCode == kVK_LeftControl || keyCode == kVK_RightControl
+                let controlPressed = flags.contains(.maskControl)
+
+                if isControlKey && controlPressed && !isControlCurrentlyHeld {
+                    // Control key just pressed
+                    isControlCurrentlyHeld = true
+                } else if isControlKey && !controlPressed && isControlCurrentlyHeld {
+                    // Control key just released - check for double-tap
+                    isControlCurrentlyHeld = false
+                    handleControlRelease()
+                }
+            }
+            // For toggle mode, return early - don't use the standard state transition logic
+            return Unmanaged.passRetained(event)
         }
 
-        // Handle state transitions
+        // Handle state transitions (for hold modes only)
         if hotkeyPressed && !isHotkeyActive {
             isHotkeyActive = true
             DispatchQueue.main.async { [weak self] in
@@ -136,6 +163,30 @@ class HotkeyManager {
         return Unmanaged.passRetained(event)
     }
 
+    private func handleControlRelease() {
+        let now = Date().timeIntervalSince1970
+
+        doubleTapResetTimer?.invalidate()
+        doubleTapResetTimer = nil
+
+        if let lastTap = lastControlTapTime, now - lastTap < doubleTapWindow {
+            // Double-tap detected - toggle recording state
+            isToggleRecording.toggle()
+            lastControlTapTime = nil
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.onToggle?(self.isToggleRecording)
+            }
+        } else {
+            // First tap - record time and start reset timer
+            lastControlTapTime = now
+            doubleTapResetTimer = Timer.scheduledTimer(withTimeInterval: doubleTapWindow, repeats: false) { [weak self] _ in
+                self?.lastControlTapTime = nil
+            }
+        }
+    }
+
     func stop() {
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
@@ -146,6 +197,13 @@ class HotkeyManager {
         eventTap = nil
         runLoopSource = nil
         isHotkeyActive = false
+
+        // Reset double-tap state
+        doubleTapResetTimer?.invalidate()
+        doubleTapResetTimer = nil
+        lastControlTapTime = nil
+        isControlCurrentlyHeld = false
+        isToggleRecording = false
     }
 
     func updateHotkey(_ option: HotkeyOption) {

@@ -272,21 +272,8 @@ class AppState: ObservableObject {
             UserDefaults.standard.set(liveTranscriptionEnabled, forKey: "liveTranscriptionEnabled")
         }
     }
-    @Published var liveTranscriptionText: String? = nil
-
-    /// Delay in seconds before the first live transcription attempt (0.2–2.0s)
-    @Published var liveTranscriptionInitialDelay: Double = UserDefaults.standard.object(forKey: "liveTranscriptionInitialDelay") as? Double ?? 0.5 {
-        didSet {
-            UserDefaults.standard.set(liveTranscriptionInitialDelay, forKey: "liveTranscriptionInitialDelay")
-        }
-    }
-
-    /// Interval in seconds between live transcription updates (0.3–3.0s)
-    @Published var liveTranscriptionTickInterval: Double = UserDefaults.standard.object(forKey: "liveTranscriptionTickInterval") as? Double ?? 0.75 {
-        didSet {
-            UserDefaults.standard.set(liveTranscriptionTickInterval, forKey: "liveTranscriptionTickInterval")
-        }
-    }
+    @Published var liveTranscriptionConfirmedText: String = ""
+    @Published var liveTranscriptionUnconfirmedText: String = ""
 
     private init() {
         // Migrate legacy models from ~/Documents/huggingface if needed

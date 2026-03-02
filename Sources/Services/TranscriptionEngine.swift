@@ -21,6 +21,17 @@ protocol TranscriptionEngine: Actor {
     func transcribe(audioURL: URL, dictionaryHint: String?) async throws -> String
 }
 
+struct StreamingTextUpdate {
+    let confirmedText: String
+    let unconfirmedText: String
+}
+
+protocol StreamingTranscriptionEngine: Actor {
+    func startStreaming(dictionaryHint: String?) async throws
+    func stopStreaming() async throws -> String  // returns final accumulated text
+    var streamingTextUpdates: AsyncStream<StreamingTextUpdate> { get }
+}
+
 enum TranscriptionEngineError: Error, LocalizedError {
     case modelNotLoaded
     case transcriptionFailed(String)

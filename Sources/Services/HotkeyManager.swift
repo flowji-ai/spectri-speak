@@ -20,6 +20,8 @@ class HotkeyManager {
     private var doublePressResetTimer: Timer?
     private var isToggleRecording: Bool = false
 
+    private var isSuspended = false
+
     var onKeyDown: (() -> Void)?
     var onKeyUp: (() -> Void)?
     var onToggle: ((Bool) -> Void)?
@@ -41,6 +43,12 @@ class HotkeyManager {
 
         // For ctrlOptionSpace, we also need to listen for key down/up
         if hotkeyOption == .ctrlOptionSpace {
+            eventMask |= (1 << CGEventType.keyDown.rawValue)
+            eventMask |= (1 << CGEventType.keyUp.rawValue)
+        }
+
+        // For custom non-modifier keys, we need key down/up events
+        if hotkeyOption == .custom && !HotkeyOption.savedCustomKeyIsModifier {
             eventMask |= (1 << CGEventType.keyDown.rawValue)
             eventMask |= (1 << CGEventType.keyUp.rawValue)
         }
@@ -74,6 +82,10 @@ class HotkeyManager {
             if let tap = eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
+            return Unmanaged.passRetained(event)
+        }
+
+        if isSuspended {
             return Unmanaged.passRetained(event)
         }
 
@@ -119,6 +131,28 @@ class HotkeyManager {
                 hotkeyPressed = false
             } else if isHotkeyActive && hasCtrlOption {
                 hotkeyPressed = true
+            }
+
+        case .custom:
+            let customKeycode = HotkeyOption.savedCustomKeycode
+            guard customKeycode >= 0 else { break }
+
+            if HotkeyOption.savedCustomKeyIsModifier {
+                if type == .flagsChanged && keyCode == customKeycode {
+                    hotkeyPressed = modifierFlagIsSet(for: customKeycode, flags: flags)
+                    // Hold-continuity: if active and the modifier flag is still set, stay active
+                    if !hotkeyPressed && isHotkeyActive && modifierFlagIsSet(for: customKeycode, flags: flags) {
+                        hotkeyPressed = true
+                    }
+                }
+            } else {
+                if type == .keyDown && keyCode == customKeycode {
+                    hotkeyPressed = true
+                } else if type == .keyUp && keyCode == customKeycode {
+                    hotkeyPressed = false
+                } else if isHotkeyActive && type != .keyUp {
+                    hotkeyPressed = true
+                }
             }
         }
 
@@ -175,6 +209,25 @@ class HotkeyManager {
             doublePressResetTimer = Timer.scheduledTimer(withTimeInterval: doublePressWindow, repeats: false) { [weak self] _ in
                 self?.lastPressReleaseTime = nil
             }
+        }
+    }
+
+    func suspend() {
+        isSuspended = true
+    }
+
+    func resume() {
+        isSuspended = false
+    }
+
+    private func modifierFlagIsSet(for keycode: Int64, flags: CGEventFlags) -> Bool {
+        switch keycode {
+        case 0x37, 0x36: return flags.contains(.maskCommand)       // Left/Right Command
+        case 0x3A, 0x3D: return flags.contains(.maskAlternate)     // Left/Right Option
+        case 0x38, 0x3C: return flags.contains(.maskShift)         // Left/Right Shift
+        case 0x3B, 0x3E: return flags.contains(.maskControl)       // Left/Right Control
+        case 0x3F:       return flags.contains(.maskSecondaryFn)   // Fn
+        default:         return false
         }
     }
 

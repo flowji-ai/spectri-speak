@@ -139,6 +139,7 @@ enum HotkeyOption: String, CaseIterable {
     case rightCommand = "rightCommand"
     case hyperKey = "hyperKey"
     case ctrlOptionSpace = "ctrlOptionSpace"
+    case custom = "custom"
 
     /// The key name without mode suffix (e.g. "Fn", "Right Option").
     var keyName: String {
@@ -148,7 +149,30 @@ enum HotkeyOption: String, CaseIterable {
         case .rightCommand: return "Right Command"
         case .hyperKey: return "Hyper Key – Ctrl+Opt+Cmd+Shift"
         case .ctrlOptionSpace: return "Ctrl+Option+Space"
+        case .custom:
+            let name = Self.savedCustomKeyName
+            return name.isEmpty ? "Custom Key" : name
         }
+    }
+
+    // MARK: - Custom key UserDefaults storage
+
+    static var savedCustomKeycode: Int64 {
+        get {
+            let val = UserDefaults.standard.object(forKey: "customHotkeyKeycode") as? Int64
+            return val ?? -1
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "customHotkeyKeycode") }
+    }
+
+    static var savedCustomKeyIsModifier: Bool {
+        get { UserDefaults.standard.bool(forKey: "customHotkeyIsModifier") }
+        set { UserDefaults.standard.set(newValue, forKey: "customHotkeyIsModifier") }
+    }
+
+    static var savedCustomKeyName: String {
+        get { UserDefaults.standard.string(forKey: "customHotkeyName") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "customHotkeyName") }
     }
 
     /// Display name including the current mode suffix.

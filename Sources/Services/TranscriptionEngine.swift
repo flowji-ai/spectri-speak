@@ -21,7 +21,7 @@ protocol TranscriptionEngine: Actor {
     func transcribe(audioURL: URL, dictionaryHint: String?) async throws -> String
 }
 
-struct StreamingTextUpdate {
+struct StreamingTextUpdate: Sendable {
     let confirmedText: String
     let unconfirmedText: String
 }

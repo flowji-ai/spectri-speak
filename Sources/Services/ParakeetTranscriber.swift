@@ -97,7 +97,8 @@ actor ParakeetTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
         // Launch a task to consume streaming transcription updates
         streamingUpdateTask = Task { [weak manager] in
             guard let manager else { return }
-            for await _ in manager.transcriptionUpdates {
+            let updates = await manager.transcriptionUpdates
+            for await _ in updates {
                 let confirmed = await manager.confirmedTranscript
                 let volatile = await manager.volatileTranscript
                 continuation.yield(StreamingTextUpdate(

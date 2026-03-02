@@ -118,6 +118,15 @@ class DictationController {
                     dictionaryHint: dictionaryHint.isEmpty ? nil : dictionaryHint
                 )
 
+                // Strip bracketed transcription artifacts (e.g., [Silence], [BLANK_AUDIO], (Music))
+                text = text.replacingOccurrences(
+                    of: "\\[.*?\\]|\\(.*?\\)",
+                    with: "",
+                    options: .regularExpression
+                )
+                .replacingOccurrences(of: "  +", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
                 // Post-process with dictionary entries (applies to all engines)
                 let entries = appState.dictionaryState.enabledEntries(for: selectedLanguage)
                 if !entries.isEmpty {

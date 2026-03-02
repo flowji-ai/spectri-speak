@@ -114,12 +114,15 @@ class DictationController {
         liveOverlayController?.show()
 
         liveTranscriptionTask = Task { [weak self] in
-            // Initial delay before first transcription attempt
-            try? await Task.sleep(for: .seconds(1))
+            guard let self else { return }
+            let initialDelay = self.appState.liveTranscriptionInitialDelay
+            let tickInterval = self.appState.liveTranscriptionTickInterval
+
+            try? await Task.sleep(for: .seconds(initialDelay))
 
             while !Task.isCancelled {
-                await self?.performLiveTranscriptionTick()
-                try? await Task.sleep(for: .milliseconds(1500))
+                await self.performLiveTranscriptionTick()
+                try? await Task.sleep(for: .seconds(tickInterval))
             }
         }
     }

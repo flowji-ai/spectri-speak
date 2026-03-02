@@ -1,16 +1,25 @@
 import AVFoundation
 import Foundation
+import os
 
 class AudioRecorder {
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
     private var tempFileURL: URL?
 
+    // In-memory sample buffer for live transcription
+    private var sampleBuffer: [Float] = []
+    private var sampleBufferLock = os_unfair_lock()
+
     var isRecording: Bool {
         audioEngine?.isRunning ?? false
     }
 
     func startRecording() throws -> URL {
+        os_unfair_lock_lock(&sampleBufferLock)
+        sampleBuffer.removeAll()
+        os_unfair_lock_unlock(&sampleBufferLock)
+
         let audioEngine = AVAudioEngine()
         self.audioEngine = audioEngine
 
@@ -68,11 +77,28 @@ class AudioRecorder {
 
         guard status != .error, error == nil else { return }
 
+        // Append converted samples for live transcription
+        if let channelData = outputBuffer.floatChannelData {
+            let frameCount = Int(outputBuffer.frameLength)
+            let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
+            os_unfair_lock_lock(&sampleBufferLock)
+            sampleBuffer.append(contentsOf: samples)
+            os_unfair_lock_unlock(&sampleBufferLock)
+        }
+
         do {
             try audioFile?.write(from: outputBuffer)
         } catch {
             print("Error writing audio buffer: \(error)")
         }
+    }
+
+    /// Returns a copy of the current in-memory audio samples (16kHz mono float32).
+    func currentAudioSamples() -> [Float] {
+        os_unfair_lock_lock(&sampleBufferLock)
+        let copy = sampleBuffer
+        os_unfair_lock_unlock(&sampleBufferLock)
+        return copy
     }
 
     func stopRecording() -> URL? {

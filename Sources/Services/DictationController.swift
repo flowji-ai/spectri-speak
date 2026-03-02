@@ -14,6 +14,11 @@ class DictationController {
 
     private var currentRecordingURL: URL?
 
+    // Live transcription state
+    private var liveTranscriptionTask: Task<Void, Never>?
+    private var isLiveTranscribing = false
+    private var liveOverlayController: LiveTranscriptionPanelController?
+
     func updateHotkey(_ option: HotkeyOption) {
         hotkeyManager.updateHotkey(option)
         configureHotkeyCallbacks()
@@ -88,16 +93,78 @@ class DictationController {
         do {
             currentRecordingURL = try audioRecorder.startRecording()
             appState.recordingState = .recording
+
+            if appState.liveTranscriptionEnabled && modelManager.supportsLiveTranscription {
+                startLiveTranscription()
+            }
         } catch {
             appState.lastError = "Failed to start recording: \(error.localizedDescription)"
             hotkeyManager.resetToggleState()
         }
     }
 
+    // MARK: - Live Transcription
+
+    private func startLiveTranscription() {
+        appState.liveTranscriptionText = ""
+
+        if liveOverlayController == nil {
+            liveOverlayController = LiveTranscriptionPanelController()
+        }
+        liveOverlayController?.show()
+
+        liveTranscriptionTask = Task { [weak self] in
+            // Initial delay before first transcription attempt
+            try? await Task.sleep(for: .seconds(1))
+
+            while !Task.isCancelled {
+                await self?.performLiveTranscriptionTick()
+                try? await Task.sleep(for: .milliseconds(1500))
+            }
+        }
+    }
+
+    private func performLiveTranscriptionTick() async {
+        guard !isLiveTranscribing else { return }
+
+        let samples = audioRecorder.currentAudioSamples()
+        // Need at least ~0.5s of audio at 16kHz
+        guard samples.count >= 8000 else { return }
+
+        isLiveTranscribing = true
+        defer { isLiveTranscribing = false }
+
+        let dictionaryHint = appState.dictionaryState.promptText(for: appState.dictionaryState.selectedLanguage)
+
+        do {
+            let text = try await modelManager.transcribe(
+                audioSamples: samples,
+                dictionaryHint: dictionaryHint.isEmpty ? nil : dictionaryHint
+            )
+            appState.liveTranscriptionText = text
+        } catch {
+            // Silently ignore errors — final transcription pass will handle them
+        }
+    }
+
+    private func stopLiveTranscription() {
+        liveTranscriptionTask?.cancel()
+        liveTranscriptionTask = nil
+        isLiveTranscribing = false
+    }
+
+    private func dismissOverlay() {
+        liveOverlayController?.dismiss()
+        appState.liveTranscriptionText = nil
+    }
+
     private func stopRecordingAndTranscribe() {
         guard appState.recordingState == .recording else { return }
 
+        stopLiveTranscription()
+
         guard let audioURL = audioRecorder.stopRecording() else {
+            dismissOverlay()
             appState.recordingState = .idle
             return
         }
@@ -178,15 +245,27 @@ class DictationController {
 
                 await MainActor.run {
                     if !text.isEmpty {
+                        // Briefly show final text in overlay before dismissing
+                        if appState.liveTranscriptionText != nil {
+                            appState.liveTranscriptionText = text
+                            Task {
+                                try? await Task.sleep(for: .milliseconds(500))
+                                self.dismissOverlay()
+                            }
+                        }
+
                         Task {
                             await textInjector.inject(text: text)
                         }
+                    } else {
+                        dismissOverlay()
                     }
                     appState.recordingState = .idle
                 }
             } catch {
                 await MainActor.run {
                     appState.lastError = "Transcription failed: \(error.localizedDescription)"
+                    dismissOverlay()
                     appState.recordingState = .idle
                     hotkeyManager.resetToggleState()
                 }
@@ -207,6 +286,8 @@ class DictationController {
 
     func stop() {
         hotkeyManager.stop()
+        stopLiveTranscription()
+        dismissOverlay()
         if audioRecorder.isRecording {
             _ = audioRecorder.stopRecording()
         }

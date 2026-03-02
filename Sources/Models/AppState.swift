@@ -266,6 +266,14 @@ class AppState: ObservableObject {
     // Transcription history
     let historyState = TranscriptionHistoryState()
 
+    // Live transcription
+    @Published var liveTranscriptionEnabled: Bool = UserDefaults.standard.bool(forKey: "liveTranscriptionEnabled") {
+        didSet {
+            UserDefaults.standard.set(liveTranscriptionEnabled, forKey: "liveTranscriptionEnabled")
+        }
+    }
+    @Published var liveTranscriptionText: String? = nil
+
     private init() {
         // Migrate legacy models from ~/Documents/huggingface if needed
         Self.migrateModelsFromLegacyLocationIfNeeded()

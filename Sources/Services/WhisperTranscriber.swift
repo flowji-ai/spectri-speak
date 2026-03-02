@@ -87,4 +87,41 @@ actor WhisperTranscriber: TranscriptionEngine {
 
         return transcription
     }
+
+    // MARK: - Live transcription (not part of TranscriptionEngine protocol)
+
+    /// Transcribe from an in-memory audio sample array (16kHz mono float32).
+    func transcribe(audioSamples: [Float], dictionaryHint: String? = nil) async throws -> String {
+        guard let whisperKit = whisperKit else {
+            throw TranscriptionEngineError.modelNotLoaded
+        }
+
+        // Minimum ~0.3s of audio at 16kHz
+        guard audioSamples.count >= 4800 else {
+            return ""
+        }
+
+        var results: [TranscriptionResult]
+
+        if let hint = dictionaryHint, !hint.isEmpty {
+            var decodeOptions = DecodingOptions()
+            decodeOptions.promptTokens = whisperKit.tokenizer?.encode(text: hint)
+
+            results = try await whisperKit.transcribe(
+                audioArray: audioSamples,
+                decodeOptions: decodeOptions
+            )
+
+            if results.isEmpty || results.allSatisfy({ $0.text.trimmingCharacters(in: .whitespaces).isEmpty }) {
+                results = try await whisperKit.transcribe(audioArray: audioSamples)
+            }
+        } else {
+            results = try await whisperKit.transcribe(audioArray: audioSamples)
+        }
+
+        return results
+            .compactMap { $0.text }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }

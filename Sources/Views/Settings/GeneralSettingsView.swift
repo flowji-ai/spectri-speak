@@ -80,6 +80,23 @@ struct GeneralSettingsView: View {
                         }
                 }
 
+                // Live Transcription Section
+                SettingsSection(title: "Live Transcription") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Show live transcription while recording", isOn: $appState.liveTranscriptionEnabled)
+
+                        Text("Displays a floating overlay with real-time transcription text while you hold the hotkey.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if appState.currentlyLoadedModel == .parakeetV3 {
+                            Label("Live transcription is only available with Whisper models.", systemImage: "info.circle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 Spacer()
             }
             .padding(24)

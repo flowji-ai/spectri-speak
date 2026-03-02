@@ -103,6 +103,19 @@ class ModelManager: ObservableObject {
         appState.refreshDownloadedModels()
     }
 
+    /// Whether the currently loaded model supports live transcription (Whisper only)
+    var supportsLiveTranscription: Bool {
+        whisperTranscriber != nil
+    }
+
+    /// Transcribe from in-memory audio samples (live transcription, Whisper only)
+    func transcribe(audioSamples: [Float], dictionaryHint: String? = nil) async throws -> String {
+        guard let whisper = whisperTranscriber else {
+            throw TranscriptionEngineError.modelNotLoaded
+        }
+        return try await whisper.transcribe(audioSamples: audioSamples, dictionaryHint: dictionaryHint)
+    }
+
     /// Transcribe audio using the currently loaded model
     /// - Parameters:
     ///   - audioURL: Path to the audio file

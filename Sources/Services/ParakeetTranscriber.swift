@@ -1,9 +1,16 @@
 import Foundation
 import FluidAudio
 
-actor ParakeetTranscriber: TranscriptionEngine {
+actor ParakeetTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
     private var asrManager: AsrManager?
+    private var loadedModels: AsrModels?
     private var isLoading = false
+
+    // MARK: - Streaming properties
+    private var streamingManager: StreamingAsrManager?
+    private var _streamingTextUpdates: AsyncStream<StreamingTextUpdate>?
+    private var streamContinuation: AsyncStream<StreamingTextUpdate>.Continuation?
+    private var streamingUpdateTask: Task<Void, Never>?
 
     var isModelLoaded: Bool {
         asrManager != nil
@@ -27,6 +34,9 @@ actor ParakeetTranscriber: TranscriptionEngine {
             progressHandler(0.8)
         }
 
+        // Store models for reuse in streaming
+        loadedModels = models
+
         // Initialize ASR manager
         let manager = AsrManager(config: .default)
         try await manager.initialize(models: models)
@@ -40,6 +50,7 @@ actor ParakeetTranscriber: TranscriptionEngine {
 
     func unloadModel() async {
         asrManager = nil
+        loadedModels = nil
     }
 
     func transcribe(audioURL: URL, dictionaryHint: String? = nil) async throws -> String {
@@ -55,5 +66,62 @@ actor ParakeetTranscriber: TranscriptionEngine {
         let result = try await asrManager.transcribe(samples)
 
         return result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - StreamingTranscriptionEngine
+
+    var streamingTextUpdates: AsyncStream<StreamingTextUpdate> {
+        if let stream = _streamingTextUpdates {
+            return stream
+        }
+        // Return an empty finished stream if not streaming
+        return AsyncStream { $0.finish() }
+    }
+
+    func startStreaming(dictionaryHint: String?) async throws {
+        guard let models = loadedModels else {
+            throw TranscriptionEngineError.modelNotLoaded
+        }
+
+        // FluidAudio does not support vocabulary biasing
+        // dictionaryHint is accepted but not used; dictionary processing happens post-transcription
+
+        let manager = StreamingAsrManager(config: .streaming)
+        try await manager.start(models: models, source: .microphone)
+
+        let (stream, continuation) = AsyncStream<StreamingTextUpdate>.makeStream()
+        _streamingTextUpdates = stream
+        streamContinuation = continuation
+        streamingManager = manager
+
+        // Launch a task to consume streaming transcription updates
+        streamingUpdateTask = Task { [weak manager] in
+            guard let manager else { return }
+            for await _ in manager.transcriptionUpdates {
+                let confirmed = await manager.confirmedTranscript
+                let volatile = await manager.volatileTranscript
+                continuation.yield(StreamingTextUpdate(
+                    confirmedText: confirmed,
+                    unconfirmedText: volatile
+                ))
+            }
+        }
+    }
+
+    func stopStreaming() async throws -> String {
+        guard let manager = streamingManager else {
+            return ""
+        }
+
+        let finalText = try await manager.finish()
+
+        streamingUpdateTask?.cancel()
+        streamingUpdateTask = nil
+        streamContinuation?.finish()
+        streamContinuation = nil
+        _streamingTextUpdates = nil
+        streamingManager = nil
+
+        return finalText
     }
 }

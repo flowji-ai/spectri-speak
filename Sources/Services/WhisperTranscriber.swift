@@ -30,6 +30,7 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
 
     // MARK: - Streaming properties
     private var streamTranscriber: AudioStreamTranscriber?
+    private var streamingTask: Task<Void, Error>?
     private var _streamingTextUpdates: AsyncStream<StreamingTextUpdate>?
     private var streamContinuation: AsyncStream<StreamingTextUpdate>.Continuation?
     private let latestStreamingText = StreamingTextSnapshot()
@@ -85,6 +86,8 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
         if let transcriber = streamTranscriber {
             await transcriber.stopStreamTranscription()
         }
+        streamingTask?.cancel()
+        streamingTask = nil
         streamContinuation?.finish()
         streamContinuation = nil
         _streamingTextUpdates = nil
@@ -146,6 +149,7 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
         }
 
         var decodeOptions = DecodingOptions()
+        decodeOptions.skipSpecialTokens = true
         if let hint = dictionaryHint, !hint.isEmpty {
             decodeOptions.promptTokens = tokenizer.encode(text: hint)
         }
@@ -181,7 +185,10 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
         )
         streamTranscriber = transcriber
 
-        try await transcriber.startStreamTranscription()
+        // Launch in background — startStreamTranscription() blocks until stop is called
+        streamingTask = Task {
+            try await transcriber.startStreamTranscription()
+        }
     }
 
     func stopStreaming() async throws -> String {
@@ -192,6 +199,8 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
         // stopStreamTranscription triggers a final state change (isRecording = false),
         // which fires the callback and updates latestStreamingText
         await transcriber.stopStreamTranscription()
+        streamingTask?.cancel()
+        streamingTask = nil
 
         let (confirmed, unconfirmed) = latestStreamingText.read()
         let finalText = [confirmed, unconfirmed]

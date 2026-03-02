@@ -122,9 +122,7 @@ class DictationController {
                         }
                     }
                 } catch {
-                    await MainActor.run {
-                        // Silently ignore streaming errors — final stop will handle them
-                    }
+                    print("Streaming error: \(error.localizedDescription)")
                 }
             }
         } else {

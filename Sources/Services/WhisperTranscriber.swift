@@ -81,6 +81,15 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
     }
 
     func unloadModel() async {
+        // Clean up any active streaming before unloading
+        if let transcriber = streamTranscriber {
+            await transcriber.stopStreamTranscription()
+        }
+        streamContinuation?.finish()
+        streamContinuation = nil
+        _streamingTextUpdates = nil
+        streamTranscriber = nil
+
         whisperKit = nil
     }
 

@@ -49,6 +49,14 @@ actor ParakeetTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
     }
 
     func unloadModel() async {
+        // Clean up any active streaming before unloading
+        streamingUpdateTask?.cancel()
+        streamingUpdateTask = nil
+        streamContinuation?.finish()
+        streamContinuation = nil
+        _streamingTextUpdates = nil
+        streamingManager = nil
+
         asrManager = nil
         loadedModels = nil
     }

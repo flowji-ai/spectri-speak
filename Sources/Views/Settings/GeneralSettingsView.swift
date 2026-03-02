@@ -88,51 +88,6 @@ struct GeneralSettingsView: View {
                         Text("Displays a floating overlay with real-time transcription text while you hold the hotkey.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-
-                        if appState.liveTranscriptionEnabled {
-                            Divider()
-                                .padding(.vertical, 4)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Initial delay")
-                                    Spacer()
-                                    Text(String(format: "%.1fs", appState.liveTranscriptionInitialDelay))
-                                        .monospacedDigit()
-                                        .foregroundStyle(.secondary)
-                                }
-                                .font(.subheadline)
-
-                                Slider(value: $appState.liveTranscriptionInitialDelay, in: 0.2...2.0, step: 0.1)
-
-                                Text("How long to wait before the first transcription attempt. Shorter values show text sooner but may produce less accurate initial results.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Update interval")
-                                    Spacer()
-                                    Text(String(format: "%.1fs", appState.liveTranscriptionTickInterval))
-                                        .monospacedDigit()
-                                        .foregroundStyle(.secondary)
-                                }
-                                .font(.subheadline)
-
-                                Slider(value: $appState.liveTranscriptionTickInterval, in: 0.3...3.0, step: 0.1)
-
-                                Text("How often the transcription updates while recording. Shorter intervals feel more responsive but use more processing power.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        if appState.currentlyLoadedModel == .parakeetV3 {
-                            Label("Live transcription is only available with Whisper models.", systemImage: "info.circle")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
                     }
                 }
 

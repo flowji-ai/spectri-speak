@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Foundation
 import SwiftUI
 
 // MARK: - Panel Controller
@@ -54,13 +55,16 @@ class LiveTranscriptionPanelController {
         self.panel = panel
 
         // Observe text changes to resize panel after SwiftUI layout
-        cancellable = AppState.shared.$liveTranscriptionText
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                DispatchQueue.main.async {
-                    self?.resizePanel()
-                }
+        cancellable = Publishers.CombineLatest(
+            AppState.shared.$liveTranscriptionConfirmedText,
+            AppState.shared.$liveTranscriptionUnconfirmedText
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _, _ in
+            DispatchQueue.main.async {
+                self?.resizePanel()
             }
+        }
     }
 
     private func resizePanel() {
@@ -96,12 +100,15 @@ struct LiveTranscriptionOverlayView: View {
                 .padding(.top, 3)
 
             // Transcription text
-            if let text = appState.liveTranscriptionText, !text.isEmpty {
-                Text(text)
+            if !appState.liveTranscriptionConfirmedText.isEmpty || !appState.liveTranscriptionUnconfirmedText.isEmpty {
+                (Text(appState.liveTranscriptionConfirmedText)
                     .font(.system(size: 14))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                 + Text(appState.liveTranscriptionUnconfirmedText.isEmpty ? "" : " " + appState.liveTranscriptionUnconfirmedText)
+                    .font(.system(size: 14))
+                    .italic()
+                    .foregroundColor(.secondary))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Listening...")
                     .font(.system(size: 14))

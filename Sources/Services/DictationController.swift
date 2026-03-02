@@ -14,9 +14,8 @@ class DictationController {
 
     private var currentRecordingURL: URL?
 
-    // Live transcription state
-    private var liveTranscriptionTask: Task<Void, Never>?
-    private var isLiveTranscribing = false
+    // Streaming transcription state
+    private var streamConsumptionTask: Task<Void, Never>?
     private var liveOverlayController: LiveTranscriptionPanelController?
 
     func updateHotkey(_ option: HotkeyOption) {
@@ -90,75 +89,67 @@ class DictationController {
     private func startRecording() {
         guard appState.recordingState == .idle else { return }
 
-        do {
-            currentRecordingURL = try audioRecorder.startRecording()
+        if appState.liveTranscriptionEnabled && modelManager.supportsStreaming {
+            // Streaming path: engine handles mic capture internally
+            currentRecordingURL = nil
             appState.recordingState = .recording
 
-            if appState.liveTranscriptionEnabled && modelManager.supportsLiveTranscription {
-                startLiveTranscription()
+            let dictionaryHint = appState.dictionaryState.promptText(for: appState.dictionaryState.selectedLanguage)
+
+            // Show overlay
+            appState.liveTranscriptionConfirmedText = ""
+            appState.liveTranscriptionUnconfirmedText = ""
+            if liveOverlayController == nil {
+                liveOverlayController = LiveTranscriptionPanelController()
             }
-        } catch {
-            appState.lastError = "Failed to start recording: \(error.localizedDescription)"
-            hotkeyManager.resetToggleState()
+            liveOverlayController?.show()
+
+            // Start streaming and consume updates
+            streamConsumptionTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await self.modelManager.startStreaming(
+                        dictionaryHint: dictionaryHint.isEmpty ? nil : dictionaryHint
+                    )
+
+                    guard let updates = await self.modelManager.streamingTextUpdates else { return }
+
+                    for await update in updates {
+                        guard !Task.isCancelled else { break }
+                        await MainActor.run {
+                            self.appState.liveTranscriptionConfirmedText = update.confirmedText
+                            self.appState.liveTranscriptionUnconfirmedText = update.unconfirmedText
+                        }
+                    }
+                } catch {
+                    await MainActor.run {
+                        // Silently ignore streaming errors — final stop will handle them
+                    }
+                }
+            }
+        } else {
+            // File-based path: audioRecorder captures to file
+            do {
+                currentRecordingURL = try audioRecorder.startRecording()
+                appState.recordingState = .recording
+            } catch {
+                appState.lastError = "Failed to start recording: \(error.localizedDescription)"
+                hotkeyManager.resetToggleState()
+            }
         }
     }
 
     // MARK: - Live Transcription
 
-    private func startLiveTranscription() {
-        appState.liveTranscriptionText = ""
-
-        if liveOverlayController == nil {
-            liveOverlayController = LiveTranscriptionPanelController()
-        }
-        liveOverlayController?.show()
-
-        liveTranscriptionTask = Task { [weak self] in
-            guard let self else { return }
-            let initialDelay = self.appState.liveTranscriptionInitialDelay
-            let tickInterval = self.appState.liveTranscriptionTickInterval
-
-            try? await Task.sleep(for: .seconds(initialDelay))
-
-            while !Task.isCancelled {
-                await self.performLiveTranscriptionTick()
-                try? await Task.sleep(for: .seconds(tickInterval))
-            }
-        }
-    }
-
-    private func performLiveTranscriptionTick() async {
-        guard !isLiveTranscribing else { return }
-
-        let samples = audioRecorder.currentAudioSamples()
-        // Need at least ~0.5s of audio at 16kHz
-        guard samples.count >= 8000 else { return }
-
-        isLiveTranscribing = true
-        defer { isLiveTranscribing = false }
-
-        let dictionaryHint = appState.dictionaryState.promptText(for: appState.dictionaryState.selectedLanguage)
-
-        do {
-            let text = try await modelManager.transcribe(
-                audioSamples: samples,
-                dictionaryHint: dictionaryHint.isEmpty ? nil : dictionaryHint
-            )
-            appState.liveTranscriptionText = text
-        } catch {
-            // Silently ignore errors — final transcription pass will handle them
-        }
-    }
-
     private func stopLiveTranscription() {
-        liveTranscriptionTask?.cancel()
-        liveTranscriptionTask = nil
-        isLiveTranscribing = false
+        streamConsumptionTask?.cancel()
+        streamConsumptionTask = nil
     }
 
     private func dismissOverlay() {
         liveOverlayController?.dismiss()
-        appState.liveTranscriptionText = nil
+        appState.liveTranscriptionConfirmedText = ""
+        appState.liveTranscriptionUnconfirmedText = ""
     }
 
     private func stopRecordingAndTranscribe() {
@@ -166,116 +157,174 @@ class DictationController {
 
         stopLiveTranscription()
 
-        guard let audioURL = audioRecorder.stopRecording() else {
-            dismissOverlay()
-            appState.recordingState = .idle
-            return
-        }
+        if currentRecordingURL == nil {
+            // Streaming path: get final text from streaming engine
+            appState.recordingState = .transcribing
 
-        appState.recordingState = .transcribing
+            Task {
+                do {
+                    var text = try await modelManager.stopStreaming()
 
-        Task {
-            do {
-                // Use the user's selected language for dictionary processing
-                let selectedLanguage = appState.dictionaryState.selectedLanguage
+                    // Use the user's selected language for dictionary processing
+                    let selectedLanguage = appState.dictionaryState.selectedLanguage
 
-                // Get dictionary hint for model prompting (mainly for WhisperKit)
-                let dictionaryHint = appState.dictionaryState.promptText(for: selectedLanguage)
-
-                // Transcribe with dictionary hint
-                var text = try await modelManager.transcribe(
-                    audioURL: audioURL,
-                    dictionaryHint: dictionaryHint.isEmpty ? nil : dictionaryHint
-                )
-
-                // Post-process with dictionary entries (applies to all engines)
-                let entries = appState.dictionaryState.enabledEntries(for: selectedLanguage)
-                if !entries.isEmpty {
-                    text = dictionaryProcessor.process(text, using: entries, language: selectedLanguage)
-                }
-
-                // AI refinement (if enabled)
-                let refinementMode = RefinementMode.saved
-                let customPrompt = UserDefaults.standard.string(forKey: "ollamaPrompt")
-
-                switch refinementMode {
-                case .builtIn:
-                    await MainActor.run { appState.recordingState = .refining }
-                    do {
-                        if mlxRefiner == nil {
-                            mlxRefiner = MLXRefiner()
-                        }
-                        let refiner = mlxRefiner!
-                        if await !refiner.isModelLoaded {
-                            try await refiner.loadModel { _ in }
-                        }
-                        text = try await refiner.refine(text: text, customPrompt: customPrompt)
-                    } catch {
-                        print("Built-in refinement skipped: \(error.localizedDescription)")
+                    // Post-process with dictionary entries (applies to all engines)
+                    let entries = appState.dictionaryState.enabledEntries(for: selectedLanguage)
+                    if !entries.isEmpty {
+                        text = dictionaryProcessor.process(text, using: entries, language: selectedLanguage)
                     }
 
-                case .external:
-                    let ollamaURL = UserDefaults.standard.string(forKey: "ollamaURL") ?? "http://localhost:11434"
-                    let ollamaModel = UserDefaults.standard.string(forKey: "ollamaModel") ?? "gemma3:4b"
-                    if !ollamaURL.isEmpty && !ollamaModel.isEmpty {
-                        await MainActor.run { appState.recordingState = .refining }
-                        do {
-                            text = try await OllamaRefiner.refine(
-                                text: text,
-                                baseURL: ollamaURL,
-                                model: ollamaModel,
-                                customPrompt: customPrompt
-                            )
-                        } catch {
-                            print("Ollama refinement skipped: \(error.localizedDescription)")
-                        }
+                    // AI refinement (if enabled)
+                    text = try await applyRefinement(text)
+
+                    // Add to transcription history
+                    let historyEntry = TranscriptionHistoryEntry(
+                        text: TranscriptionHistoryStorage.truncateIfNeeded(text),
+                        modelUsed: appState.currentlyLoadedModel?.displayName ?? "Unknown",
+                        language: selectedLanguage,
+                        audioLength: nil
+                    )
+                    await MainActor.run {
+                        appState.historyState.add(historyEntry)
                     }
 
-                case .off:
-                    break
-                }
-
-                // Add to transcription history
-                let historyEntry = TranscriptionHistoryEntry(
-                    text: TranscriptionHistoryStorage.truncateIfNeeded(text),
-                    modelUsed: appState.currentlyLoadedModel?.displayName ?? "Unknown",
-                    language: selectedLanguage,
-                    audioLength: nil
-                )
-                await MainActor.run {
-                    appState.historyState.add(historyEntry)
-                }
-
-                await MainActor.run {
-                    if !text.isEmpty {
-                        // Briefly show final text in overlay before dismissing
-                        if appState.liveTranscriptionText != nil {
-                            appState.liveTranscriptionText = text
+                    await MainActor.run {
+                        if !text.isEmpty {
+                            // Briefly show final text in overlay before dismissing
+                            appState.liveTranscriptionConfirmedText = text
+                            appState.liveTranscriptionUnconfirmedText = ""
                             Task {
                                 try? await Task.sleep(for: .milliseconds(500))
                                 self.dismissOverlay()
                             }
-                        }
 
-                        Task {
-                            await textInjector.inject(text: text)
+                            Task {
+                                await textInjector.inject(text: text)
+                            }
+                        } else {
+                            dismissOverlay()
                         }
-                    } else {
-                        dismissOverlay()
+                        appState.recordingState = .idle
                     }
-                    appState.recordingState = .idle
+                } catch {
+                    await MainActor.run {
+                        appState.lastError = "Transcription failed: \(error.localizedDescription)"
+                        dismissOverlay()
+                        appState.recordingState = .idle
+                        hotkeyManager.resetToggleState()
+                    }
                 }
+            }
+        } else {
+            // File-based path: transcribe from audio file
+            guard let audioURL = audioRecorder.stopRecording() else {
+                dismissOverlay()
+                appState.recordingState = .idle
+                return
+            }
+
+            appState.recordingState = .transcribing
+
+            Task {
+                do {
+                    // Use the user's selected language for dictionary processing
+                    let selectedLanguage = appState.dictionaryState.selectedLanguage
+
+                    // Get dictionary hint for model prompting (mainly for WhisperKit)
+                    let dictionaryHint = appState.dictionaryState.promptText(for: selectedLanguage)
+
+                    // Transcribe with dictionary hint
+                    var text = try await modelManager.transcribe(
+                        audioURL: audioURL,
+                        dictionaryHint: dictionaryHint.isEmpty ? nil : dictionaryHint
+                    )
+
+                    // Post-process with dictionary entries (applies to all engines)
+                    let entries = appState.dictionaryState.enabledEntries(for: selectedLanguage)
+                    if !entries.isEmpty {
+                        text = dictionaryProcessor.process(text, using: entries, language: selectedLanguage)
+                    }
+
+                    // AI refinement (if enabled)
+                    text = try await applyRefinement(text)
+
+                    // Add to transcription history
+                    let historyEntry = TranscriptionHistoryEntry(
+                        text: TranscriptionHistoryStorage.truncateIfNeeded(text),
+                        modelUsed: appState.currentlyLoadedModel?.displayName ?? "Unknown",
+                        language: selectedLanguage,
+                        audioLength: nil
+                    )
+                    await MainActor.run {
+                        appState.historyState.add(historyEntry)
+                    }
+
+                    await MainActor.run {
+                        if !text.isEmpty {
+                            Task {
+                                await textInjector.inject(text: text)
+                            }
+                        }
+                        appState.recordingState = .idle
+                    }
+                } catch {
+                    await MainActor.run {
+                        appState.lastError = "Transcription failed: \(error.localizedDescription)"
+                        appState.recordingState = .idle
+                        hotkeyManager.resetToggleState()
+                    }
+                }
+
+                audioRecorder.cleanup()
+            }
+        }
+    }
+
+    // MARK: - AI Refinement
+
+    private func applyRefinement(_ text: String) async throws -> String {
+        var result = text
+        let refinementMode = RefinementMode.saved
+        let customPrompt = UserDefaults.standard.string(forKey: "ollamaPrompt")
+
+        switch refinementMode {
+        case .builtIn:
+            await MainActor.run { appState.recordingState = .refining }
+            do {
+                if mlxRefiner == nil {
+                    mlxRefiner = MLXRefiner()
+                }
+                let refiner = mlxRefiner!
+                if await !refiner.isModelLoaded {
+                    try await refiner.loadModel { _ in }
+                }
+                result = try await refiner.refine(text: result, customPrompt: customPrompt)
             } catch {
-                await MainActor.run {
-                    appState.lastError = "Transcription failed: \(error.localizedDescription)"
-                    dismissOverlay()
-                    appState.recordingState = .idle
-                    hotkeyManager.resetToggleState()
+                print("Built-in refinement skipped: \(error.localizedDescription)")
+            }
+
+        case .external:
+            let ollamaURL = UserDefaults.standard.string(forKey: "ollamaURL") ?? "http://localhost:11434"
+            let ollamaModel = UserDefaults.standard.string(forKey: "ollamaModel") ?? "gemma3:4b"
+            if !ollamaURL.isEmpty && !ollamaModel.isEmpty {
+                await MainActor.run { appState.recordingState = .refining }
+                do {
+                    result = try await OllamaRefiner.refine(
+                        text: result,
+                        baseURL: ollamaURL,
+                        model: ollamaModel,
+                        customPrompt: customPrompt
+                    )
+                } catch {
+                    print("Ollama refinement skipped: \(error.localizedDescription)")
                 }
             }
 
-            audioRecorder.cleanup()
+        case .off:
+            break
         }
+
+        return result
     }
 
     func updateRefinementMode(_ mode: RefinementMode) {

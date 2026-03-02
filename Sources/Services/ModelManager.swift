@@ -20,6 +20,13 @@ class ModelManager: ObservableObject {
         }
     }
 
+    /// The currently active streaming engine (if any model is loaded)
+    private var currentStreamingEngine: (any StreamingTranscriptionEngine)? {
+        if let w = whisperTranscriber { return w }
+        if let p = parakeetTranscriber { return p }
+        return nil
+    }
+
     /// Load the specified model, unloading any currently loaded model first
     func loadModel(_ model: TranscriptionModel, progressHandler: @escaping (Double) -> Void) async throws {
         // Unload current model if different
@@ -103,17 +110,33 @@ class ModelManager: ObservableObject {
         appState.refreshDownloadedModels()
     }
 
-    /// Whether the currently loaded model supports live transcription (Whisper only)
-    var supportsLiveTranscription: Bool {
-        whisperTranscriber != nil
+    /// Whether the currently loaded model supports streaming transcription
+    var supportsStreaming: Bool {
+        currentStreamingEngine != nil
     }
 
-    /// Transcribe from in-memory audio samples (live transcription, Whisper only)
-    func transcribe(audioSamples: [Float], dictionaryHint: String? = nil) async throws -> String {
-        guard let whisper = whisperTranscriber else {
+    /// The current engine's streaming text updates, or nil if no streaming engine is loaded
+    var streamingTextUpdates: AsyncStream<StreamingTextUpdate>? {
+        get async {
+            guard let engine = currentStreamingEngine else { return nil }
+            return await engine.streamingTextUpdates
+        }
+    }
+
+    /// Start streaming transcription using the currently loaded engine
+    func startStreaming(dictionaryHint: String? = nil) async throws {
+        guard let engine = currentStreamingEngine else {
             throw TranscriptionEngineError.modelNotLoaded
         }
-        return try await whisper.transcribe(audioSamples: audioSamples, dictionaryHint: dictionaryHint)
+        try await engine.startStreaming(dictionaryHint: dictionaryHint)
+    }
+
+    /// Stop streaming transcription and return the final accumulated text
+    func stopStreaming() async throws -> String {
+        guard let engine = currentStreamingEngine else {
+            throw TranscriptionEngineError.modelNotLoaded
+        }
+        return try await engine.stopStreaming()
     }
 
     /// Transcribe audio using the currently loaded model

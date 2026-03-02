@@ -49,6 +49,11 @@ struct GeneralSettingsView: View {
                         }
                         .pickerStyle(.radioGroup)
                         .onChange(of: selectedHotkey) { _, newValue in
+                            if isCapturingKey {
+                                isCapturingKey = false
+                                NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+                            }
+                            capturedKeyName = HotkeyOption.savedCustomKeyName
                             HotkeyOption.saved = newValue
                             NotificationCenter.default.post(
                                 name: .hotkeyChanged,
@@ -87,7 +92,7 @@ struct GeneralSettingsView: View {
                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     }
 
-                                    Text(isCapturingKey ? "Press any key..." : (capturedKeyName.isEmpty ? "No key assigned" : capturedKeyName))
+                                    Text(isCapturingKey ? "Press any key (Esc to cancel)..." : (capturedKeyName.isEmpty ? "No key assigned" : capturedKeyName))
                                         .foregroundStyle(isCapturingKey ? .secondary : .primary)
                                         .font(.system(.body, design: .monospaced))
                                 }
@@ -143,6 +148,13 @@ struct GeneralSettingsView: View {
         .onAppear {
             checkPermissions()
             launchAtLogin = SMAppService.mainApp.status == .enabled
+            capturedKeyName = HotkeyOption.savedCustomKeyName
+        }
+        .onDisappear {
+            if isCapturingKey {
+                isCapturingKey = false
+                NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+            }
         }
     }
 

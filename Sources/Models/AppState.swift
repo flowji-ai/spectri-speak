@@ -159,10 +159,10 @@ enum HotkeyOption: String, CaseIterable {
 
     static var savedCustomKeycode: Int64 {
         get {
-            let val = UserDefaults.standard.object(forKey: "customHotkeyKeycode") as? Int64
-            return val ?? -1
+            guard UserDefaults.standard.object(forKey: "customHotkeyKeycode") != nil else { return -1 }
+            return Int64(UserDefaults.standard.integer(forKey: "customHotkeyKeycode"))
         }
-        set { UserDefaults.standard.set(newValue, forKey: "customHotkeyKeycode") }
+        set { UserDefaults.standard.set(Int(newValue), forKey: "customHotkeyKeycode") }
     }
 
     static var savedCustomKeyIsModifier: Bool {

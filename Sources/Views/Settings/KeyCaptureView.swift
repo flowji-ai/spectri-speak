@@ -68,16 +68,12 @@ class KeyCaptureNSView: NSView {
         switch keyCode {
         case 0x3A, 0x3D: // Left/Right Option
             return flags.contains(.option) && !previousFlags.contains(.option)
-                || (flags.contains(.option) && previousFlags.contains(.option) == false)
         case 0x37, 0x36: // Left/Right Command
             return flags.contains(.command) && !previousFlags.contains(.command)
-                || (flags.contains(.command) && previousFlags.contains(.command) == false)
         case 0x38, 0x3C: // Left/Right Shift
             return flags.contains(.shift) && !previousFlags.contains(.shift)
-                || (flags.contains(.shift) && previousFlags.contains(.shift) == false)
         case 0x3B, 0x3E: // Left/Right Control
             return flags.contains(.control) && !previousFlags.contains(.control)
-                || (flags.contains(.control) && previousFlags.contains(.control) == false)
         case 0x3F: // Fn
             return flags.contains(.function) && !previousFlags.contains(.function)
         default:

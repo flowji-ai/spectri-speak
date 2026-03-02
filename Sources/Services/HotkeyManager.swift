@@ -138,10 +138,12 @@ class HotkeyManager {
             guard customKeycode >= 0 else { break }
 
             if HotkeyOption.savedCustomKeyIsModifier {
-                if type == .flagsChanged && keyCode == customKeycode {
-                    hotkeyPressed = modifierFlagIsSet(for: customKeycode, flags: flags)
-                    // Hold-continuity: if active and the modifier flag is still set, stay active
-                    if !hotkeyPressed && isHotkeyActive && modifierFlagIsSet(for: customKeycode, flags: flags) {
+                if type == .flagsChanged {
+                    let flagSet = modifierFlagIsSet(for: customKeycode, flags: flags)
+                    if keyCode == customKeycode {
+                        hotkeyPressed = flagSet
+                    } else if isHotkeyActive && flagSet {
+                        // Hold-continuity: another modifier changed but ours is still held
                         hotkeyPressed = true
                     }
                 }
@@ -241,6 +243,7 @@ class HotkeyManager {
         eventTap = nil
         runLoopSource = nil
         isHotkeyActive = false
+        isSuspended = false
 
         // Reset double-press state
         doublePressResetTimer?.invalidate()

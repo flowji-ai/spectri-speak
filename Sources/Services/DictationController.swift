@@ -112,17 +112,22 @@ class DictationController {
                         dictionaryHint: dictionaryHint.isEmpty ? nil : dictionaryHint
                     )
 
-                    guard let updates = await self.modelManager.streamingTextUpdates else { return }
+                    guard let updates = await self.modelManager.streamingTextUpdates else {
+                        return
+                    }
 
                     for await update in updates {
                         guard !Task.isCancelled else { break }
-                        await MainActor.run {
-                            self.appState.liveTranscriptionConfirmedText = update.confirmedText
-                            self.appState.liveTranscriptionUnconfirmedText = update.unconfirmedText
-                        }
+                        self.appState.liveTranscriptionConfirmedText = update.confirmedText
+                        self.appState.liveTranscriptionUnconfirmedText = update.unconfirmedText
                     }
                 } catch {
-                    print("Streaming error: \(error.localizedDescription)")
+                    await MainActor.run {
+                        self.appState.lastError = "Streaming failed: \(error.localizedDescription)"
+                        self.appState.recordingState = .idle
+                        self.hotkeyManager.resetToggleState()
+                        self.dismissOverlay()
+                    }
                 }
             }
         } else {

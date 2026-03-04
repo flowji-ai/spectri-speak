@@ -72,61 +72,61 @@ final class WhisperStreamingTests: XCTestCase {
     // MARK: - diffWords Tests
 
     func testEmptyPrevious() {
-        let result = WhisperTranscriber.diffWords(previous: "", current: "Hello world")
+        let result = diffWords(previous: "", current: "Hello world")
         XCTAssertEqual(result.confirmed, "")
         XCTAssertEqual(result.unconfirmed, "Hello world")
     }
 
     func testIdenticalText() {
-        let result = WhisperTranscriber.diffWords(previous: "Hello world", current: "Hello world")
+        let result = diffWords(previous: "Hello world", current: "Hello world")
         XCTAssertEqual(result.confirmed, "Hello world")
         XCTAssertEqual(result.unconfirmed, "")
     }
 
     func testCommonPrefix() {
-        let result = WhisperTranscriber.diffWords(previous: "Hello world", current: "Hello there")
+        let result = diffWords(previous: "Hello world", current: "Hello there")
         XCTAssertEqual(result.confirmed, "Hello")
         XCTAssertEqual(result.unconfirmed, "there")
     }
 
     func testCompletelyDifferent() {
-        let result = WhisperTranscriber.diffWords(previous: "Hello", current: "Goodbye")
+        let result = diffWords(previous: "Hello", current: "Goodbye")
         XCTAssertEqual(result.confirmed, "")
         XCTAssertEqual(result.unconfirmed, "Goodbye")
     }
 
     func testCaseInsensitive() {
-        let result = WhisperTranscriber.diffWords(previous: "hello World", current: "Hello WORLD")
+        let result = diffWords(previous: "hello World", current: "Hello WORLD")
         XCTAssertEqual(result.confirmed, "Hello WORLD")
         XCTAssertEqual(result.unconfirmed, "")
     }
 
     func testPunctuationTolerance() {
-        let result = WhisperTranscriber.diffWords(previous: "Alright", current: "Alright, I am")
+        let result = diffWords(previous: "Alright", current: "Alright, I am")
         XCTAssertEqual(result.confirmed, "Alright,")
         XCTAssertEqual(result.unconfirmed, "I am")
     }
 
     func testTrailingPunctuationVariation() {
-        let result = WhisperTranscriber.diffWords(previous: "Hello world.", current: "Hello world, how")
+        let result = diffWords(previous: "Hello world.", current: "Hello world, how")
         XCTAssertEqual(result.confirmed, "Hello world,")
         XCTAssertEqual(result.unconfirmed, "how")
     }
 
     func testEmptyCurrent() {
-        let result = WhisperTranscriber.diffWords(previous: "Hello", current: "")
+        let result = diffWords(previous: "Hello", current: "")
         XCTAssertEqual(result.confirmed, "")
         XCTAssertEqual(result.unconfirmed, "")
     }
 
     func testBothEmpty() {
-        let result = WhisperTranscriber.diffWords(previous: "", current: "")
+        let result = diffWords(previous: "", current: "")
         XCTAssertEqual(result.confirmed, "")
         XCTAssertEqual(result.unconfirmed, "")
     }
 
     func testLongerPrevious() {
-        let result = WhisperTranscriber.diffWords(previous: "Hello world how are you", current: "Hello world")
+        let result = diffWords(previous: "Hello world how are you", current: "Hello world")
         XCTAssertEqual(result.confirmed, "Hello world")
         XCTAssertEqual(result.unconfirmed, "")
     }
@@ -134,20 +134,20 @@ final class WhisperStreamingTests: XCTestCase {
     // MARK: - normalizeForComparison Tests
 
     func testBasicNormalization() {
-        XCTAssertEqual(WhisperTranscriber.normalizeForComparison("Hello"), "hello")
+        XCTAssertEqual(normalizeForComparison("Hello"), "hello")
     }
 
     func testPunctuationStripping() {
-        XCTAssertEqual(WhisperTranscriber.normalizeForComparison("Hello,"), "hello")
-        XCTAssertEqual(WhisperTranscriber.normalizeForComparison("world."), "world")
-        XCTAssertEqual(WhisperTranscriber.normalizeForComparison("test?!"), "test")
+        XCTAssertEqual(normalizeForComparison("Hello,"), "hello")
+        XCTAssertEqual(normalizeForComparison("world."), "world")
+        XCTAssertEqual(normalizeForComparison("test?!"), "test")
     }
 
     func testNoPunctuation() {
-        XCTAssertEqual(WhisperTranscriber.normalizeForComparison("hello"), "hello")
+        XCTAssertEqual(normalizeForComparison("hello"), "hello")
     }
 
     func testOnlyPunctuation() {
-        XCTAssertEqual(WhisperTranscriber.normalizeForComparison("..."), "")
+        XCTAssertEqual(normalizeForComparison("..."), "")
     }
 }

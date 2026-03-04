@@ -343,7 +343,7 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
                     // Skip empty results to avoid flickering the overlay back to "Listening..."
                     guard !currentText.isEmpty else { continue }
 
-                    let diff = Self.diffWords(previous: previousText, current: currentText)
+                    let diff = diffWords(previous: previousText, current: currentText)
                     previousText = currentText
 
                     snapshot.update(confirmed: diff.confirmed, unconfirmed: diff.unconfirmed)
@@ -357,41 +357,6 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
                 }
             }
         }
-    }
-
-    // MARK: - Word-level diff helper
-
-    /// Word-level common-prefix diff. Words stable across consecutive transcription passes = confirmed.
-    /// Remainder = unconfirmed. Case-insensitive comparison.
-    static func diffWords(previous: String, current: String) -> (confirmed: String, unconfirmed: String) {
-        let previousWords = previous.split(separator: " ").map(String.init)
-        let currentWords = current.split(separator: " ").map(String.init)
-
-        // Find common prefix length (case-insensitive)
-        var commonCount = 0
-        let minCount = min(previousWords.count, currentWords.count)
-        for i in 0..<minCount {
-            if normalizeForComparison(previousWords[i]) == normalizeForComparison(currentWords[i]) {
-                commonCount += 1
-            } else {
-                break
-            }
-        }
-
-        // confirmed = common prefix words from current (preserving case)
-        let confirmed = currentWords.prefix(commonCount).joined(separator: " ")
-        // unconfirmed = remaining words from current
-        let unconfirmed = currentWords.dropFirst(commonCount).joined(separator: " ")
-
-        return (confirmed: confirmed, unconfirmed: unconfirmed)
-    }
-
-    static func normalizeForComparison(_ word: String) -> String {
-        var s = word.lowercased()
-        while let last = s.last, last.isPunctuation {
-            s.removeLast()
-        }
-        return s
     }
 
     // MARK: - Stop Streaming

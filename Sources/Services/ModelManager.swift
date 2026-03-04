@@ -22,9 +22,14 @@ class ModelManager: ObservableObject {
 
     /// The currently active streaming engine (if any model is loaded)
     private var currentStreamingEngine: (any StreamingTranscriptionEngine)? {
-        if let w = whisperTranscriber { return w }
-        if let p = parakeetTranscriber { return p }
-        return nil
+        switch appState.currentlyLoadedModel {
+        case .whisperTinyEn, .whisperBaseEn, .whisperSmallEn, .whisperLargeV3, .whisperLargeV3Turbo:
+            return whisperTranscriber
+        case .parakeetV3:
+            return parakeetTranscriber
+        case nil:
+            return nil
+        }
     }
 
     /// Load the specified model, unloading any currently loaded model first

@@ -32,6 +32,38 @@ protocol StreamingTranscriptionEngine: Actor {
     var streamingTextUpdates: AsyncStream<StreamingTextUpdate> { get }
 }
 
+// MARK: - Word-level diff helper (shared by Whisper and Parakeet streaming)
+
+/// Word-level common-prefix diff. Words stable across consecutive transcription passes = confirmed.
+/// Remainder = unconfirmed. Case-insensitive, punctuation-tolerant comparison.
+func diffWords(previous: String, current: String) -> (confirmed: String, unconfirmed: String) {
+    let previousWords = previous.split(separator: " ").map(String.init)
+    let currentWords = current.split(separator: " ").map(String.init)
+
+    var commonCount = 0
+    let minCount = min(previousWords.count, currentWords.count)
+    for i in 0..<minCount {
+        if normalizeForComparison(previousWords[i]) == normalizeForComparison(currentWords[i]) {
+            commonCount += 1
+        } else {
+            break
+        }
+    }
+
+    let confirmed = currentWords.prefix(commonCount).joined(separator: " ")
+    let unconfirmed = currentWords.dropFirst(commonCount).joined(separator: " ")
+
+    return (confirmed: confirmed, unconfirmed: unconfirmed)
+}
+
+func normalizeForComparison(_ word: String) -> String {
+    var s = word.lowercased()
+    while let last = s.last, last.isPunctuation {
+        s.removeLast()
+    }
+    return s
+}
+
 enum TranscriptionEngineError: Error, LocalizedError {
     case modelNotLoaded
     case transcriptionFailed(String)

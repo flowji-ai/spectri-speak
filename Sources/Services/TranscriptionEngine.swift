@@ -64,6 +64,15 @@ func normalizeForComparison(_ word: String) -> String {
     return s
 }
 
+// MARK: - Transcription artifact stripping
+
+/// Strip bracketed artifacts that Whisper sometimes produces (e.g., [Silence], [BLANK_AUDIO], (Music)).
+func stripTranscriptionArtifacts(_ text: String) -> String {
+    text.replacingOccurrences(of: "\\[.*?\\]|\\(.*?\\)", with: "", options: .regularExpression)
+        .replacingOccurrences(of: "  +", with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 enum TranscriptionEngineError: Error, LocalizedError {
     case modelNotLoaded
     case transcriptionFailed(String)

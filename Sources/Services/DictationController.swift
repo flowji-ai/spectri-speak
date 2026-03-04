@@ -167,6 +167,7 @@ class DictationController {
             Task {
                 do {
                     var text = try await modelManager.stopStreaming()
+                    text = stripTranscriptionArtifacts(text)
 
                     // Use the user's selected language for dictionary processing
                     let selectedLanguage = appState.dictionaryState.selectedLanguage
@@ -241,6 +242,7 @@ class DictationController {
                         audioURL: audioURL,
                         dictionaryHint: dictionaryHint.isEmpty ? nil : dictionaryHint
                     )
+                    text = stripTranscriptionArtifacts(text)
 
                     // Post-process with dictionary entries (applies to all engines)
                     let entries = appState.dictionaryState.enabledEntries(for: selectedLanguage)

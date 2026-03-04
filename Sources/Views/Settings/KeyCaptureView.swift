@@ -37,6 +37,13 @@ class KeyCaptureNSView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            window?.makeFirstResponder(self)
+        }
+    }
+
     override func flagsChanged(with event: NSEvent) {
         let keyCode = Int64(event.keyCode)
         let flags = event.modifierFlags
@@ -64,6 +71,10 @@ class KeyCaptureNSView: NSView {
         onCapture?(CapturedKey(keycode: keyCode, isModifier: false, displayName: name))
     }
 
+    override func keyUp(with event: NSEvent) {
+        // Swallow key-up events during capture to prevent system beep
+    }
+
     private func isModifierKeyDown(keyCode: Int64, flags: NSEvent.ModifierFlags) -> Bool {
         switch keyCode {
         case 0x3A, 0x3D: // Left/Right Option
@@ -83,99 +94,48 @@ class KeyCaptureNSView: NSView {
 }
 
 enum KeycodeNames {
+    private static let modifierNames: [Int64: String] = [
+        0x37: "Left Command",  0x36: "Right Command",
+        0x3A: "Left Option",   0x3D: "Right Option",
+        0x38: "Left Shift",    0x3C: "Right Shift",
+        0x3B: "Left Control",  0x3E: "Right Control",
+        0x3F: "Fn",
+    ]
+
+    private static let keyNames: [Int64: String] = [
+        // Special keys
+        0x31: "Space",    0x24: "Return",        0x30: "Tab",
+        0x33: "Delete",   0x75: "Forward Delete",
+        // F-keys
+        0x7A: "F1",  0x78: "F2",  0x63: "F3",  0x76: "F4",
+        0x60: "F5",  0x61: "F6",  0x62: "F7",  0x64: "F8",
+        0x65: "F9",  0x6D: "F10", 0x67: "F11", 0x6F: "F12",
+        0x69: "F13", 0x6B: "F14", 0x71: "F15",
+        // Navigation
+        0x7E: "Up Arrow",   0x7D: "Down Arrow",
+        0x7B: "Left Arrow", 0x7C: "Right Arrow",
+        0x73: "Home",       0x77: "End",
+        0x74: "Page Up",    0x79: "Page Down",
+        // Letters
+        0x00: "A", 0x0B: "B", 0x08: "C", 0x02: "D", 0x0E: "E",
+        0x03: "F", 0x05: "G", 0x04: "H", 0x22: "I", 0x26: "J",
+        0x28: "K", 0x25: "L", 0x2E: "M", 0x2D: "N", 0x1F: "O",
+        0x23: "P", 0x0C: "Q", 0x0F: "R", 0x01: "S", 0x11: "T",
+        0x20: "U", 0x09: "V", 0x0D: "W", 0x07: "X", 0x10: "Y",
+        0x06: "Z",
+        // Numbers
+        0x12: "1", 0x13: "2", 0x14: "3", 0x15: "4", 0x17: "5",
+        0x16: "6", 0x1A: "7", 0x1C: "8", 0x19: "9", 0x1D: "0",
+        // Symbols
+        0x1B: "-", 0x18: "=", 0x21: "[", 0x1E: "]", 0x2A: "\\",
+        0x29: ";", 0x27: "'", 0x2B: ",", 0x2F: ".", 0x2C: "/",
+        0x32: "`",
+    ]
+
     static func name(for keycode: Int64, isModifier: Bool) -> String {
         if isModifier {
-            switch keycode {
-            case 0x37: return "Left Command"
-            case 0x36: return "Right Command"
-            case 0x3A: return "Left Option"
-            case 0x3D: return "Right Option"
-            case 0x38: return "Left Shift"
-            case 0x3C: return "Right Shift"
-            case 0x3B: return "Left Control"
-            case 0x3E: return "Right Control"
-            case 0x3F: return "Fn"
-            default: return "Modifier \(keycode)"
-            }
+            return modifierNames[keycode] ?? "Modifier \(keycode)"
         }
-
-        switch keycode {
-        case 0x31: return "Space"
-        case 0x24: return "Return"
-        case 0x30: return "Tab"
-        case 0x33: return "Delete"
-        case 0x75: return "Forward Delete"
-        case 0x7A: return "F1"
-        case 0x78: return "F2"
-        case 0x63: return "F3"
-        case 0x76: return "F4"
-        case 0x60: return "F5"
-        case 0x61: return "F6"
-        case 0x62: return "F7"
-        case 0x64: return "F8"
-        case 0x65: return "F9"
-        case 0x6D: return "F10"
-        case 0x67: return "F11"
-        case 0x6F: return "F12"
-        case 0x69: return "F13"
-        case 0x6B: return "F14"
-        case 0x71: return "F15"
-        case 0x7E: return "Up Arrow"
-        case 0x7D: return "Down Arrow"
-        case 0x7B: return "Left Arrow"
-        case 0x7C: return "Right Arrow"
-        case 0x73: return "Home"
-        case 0x77: return "End"
-        case 0x74: return "Page Up"
-        case 0x79: return "Page Down"
-        case 0x00: return "A"
-        case 0x0B: return "B"
-        case 0x08: return "C"
-        case 0x02: return "D"
-        case 0x0E: return "E"
-        case 0x03: return "F"
-        case 0x05: return "G"
-        case 0x04: return "H"
-        case 0x22: return "I"
-        case 0x26: return "J"
-        case 0x28: return "K"
-        case 0x25: return "L"
-        case 0x2E: return "M"
-        case 0x2D: return "N"
-        case 0x1F: return "O"
-        case 0x23: return "P"
-        case 0x0C: return "Q"
-        case 0x0F: return "R"
-        case 0x01: return "S"
-        case 0x11: return "T"
-        case 0x20: return "U"
-        case 0x09: return "V"
-        case 0x0D: return "W"
-        case 0x07: return "X"
-        case 0x10: return "Y"
-        case 0x06: return "Z"
-        case 0x12: return "1"
-        case 0x13: return "2"
-        case 0x14: return "3"
-        case 0x15: return "4"
-        case 0x17: return "5"
-        case 0x16: return "6"
-        case 0x1A: return "7"
-        case 0x1C: return "8"
-        case 0x19: return "9"
-        case 0x1D: return "0"
-        case 0x1B: return "-"
-        case 0x18: return "="
-        case 0x21: return "["
-        case 0x1E: return "]"
-        case 0x2A: return "\\"
-        case 0x29: return ";"
-        case 0x27: return "'"
-        case 0x2B: return ","
-        case 0x2F: return "."
-        case 0x2C: return "/"
-        case 0x32: return "`"
-        default: return "Key \(keycode)"
-        }
+        return keyNames[keycode] ?? "Key \(keycode)"
     }
 }

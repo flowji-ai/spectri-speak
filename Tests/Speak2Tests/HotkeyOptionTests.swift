@@ -71,8 +71,8 @@ final class HotkeyOptionTests: XCTestCase {
     // MARK: - CaseIterable
 
     func testAllCasesCount() {
-        // 5 hotkey options (doubleTapControl removed)
-        XCTAssertEqual(HotkeyOption.allCases.count, 5)
+        // 6 hotkey options (doubleTapControl removed, custom added)
+        XCTAssertEqual(HotkeyOption.allCases.count, 6)
     }
 
     // MARK: - Migration

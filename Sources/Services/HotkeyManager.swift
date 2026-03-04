@@ -134,8 +134,7 @@ class HotkeyManager {
             }
 
         case .custom:
-            let customKeycode = HotkeyOption.savedCustomKeycode
-            guard customKeycode >= 0 else { break }
+            guard let customKeycode = HotkeyOption.savedCustomKeycode else { break }
 
             if HotkeyOption.savedCustomKeyIsModifier {
                 if type == .flagsChanged {
@@ -222,7 +221,7 @@ class HotkeyManager {
         isSuspended = false
     }
 
-    private func modifierFlagIsSet(for keycode: Int64, flags: CGEventFlags) -> Bool {
+    func modifierFlagIsSet(for keycode: Int64, flags: CGEventFlags) -> Bool {
         switch keycode {
         case 0x37, 0x36: return flags.contains(.maskCommand)       // Left/Right Command
         case 0x3A, 0x3D: return flags.contains(.maskAlternate)     // Left/Right Option

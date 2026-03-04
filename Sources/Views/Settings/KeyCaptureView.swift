@@ -1,15 +1,16 @@
 import SwiftUI
 import AppKit
 
-struct CapturedKey {
-    let keycode: Int64
-    let isModifier: Bool
+struct CapturedCombo {
+    let triggerKeycode: Int64
+    let triggerIsModifier: Bool
+    let requiredModifierFlags: UInt64
     let displayName: String
 }
 
 struct KeyCaptureView: NSViewRepresentable {
     var isCapturing: Bool
-    var onCapture: (CapturedKey) -> Void
+    var onCapture: (CapturedCombo) -> Void
     var onCancel: () -> Void
 
     func makeNSView(context: Context) -> KeyCaptureNSView {
@@ -29,10 +30,16 @@ struct KeyCaptureView: NSViewRepresentable {
 }
 
 class KeyCaptureNSView: NSView {
-    var onCapture: ((CapturedKey) -> Void)?
+    var onCapture: ((CapturedCombo) -> Void)?
     var onCancel: (() -> Void)?
 
-    // Track which modifier flags are currently held so we only fire on key-down
+    /// Tracks whether a non-modifier key was pressed during this capture gesture.
+    private var didPressNonModifier = false
+    /// The last modifier keycode that was pressed down (for modifier-only captures).
+    private var lastModifierKeycode: Int64?
+    /// Currently held modifier flags.
+    private var currentModifierFlags: NSEvent.ModifierFlags = []
+    /// Previous flags for detecting key-down vs key-up.
     private var previousFlags: NSEvent.ModifierFlags = []
 
     override var acceptsFirstResponder: Bool { true }
@@ -47,15 +54,32 @@ class KeyCaptureNSView: NSView {
     override func flagsChanged(with event: NSEvent) {
         let keyCode = Int64(event.keyCode)
         let flags = event.modifierFlags
-
-        // Determine if this is a key-down (flag newly set) vs key-up (flag cleared)
         let isDown = isModifierKeyDown(keyCode: keyCode, flags: flags)
+
+        if isDown {
+            lastModifierKeycode = keyCode
+            currentModifierFlags = flags
+        } else {
+            // A modifier was released
+            let allModifiersReleased = !flags.contains(.command) && !flags.contains(.option)
+                && !flags.contains(.shift) && !flags.contains(.control) && !flags.contains(.function)
+
+            if allModifiersReleased && !didPressNonModifier, let modKeycode = lastModifierKeycode {
+                // All modifiers released and no regular key was pressed → modifier-only combo
+                let name = KeycodeNames.name(for: modKeycode, isModifier: true)
+                onCapture?(CapturedCombo(
+                    triggerKeycode: modKeycode,
+                    triggerIsModifier: true,
+                    requiredModifierFlags: 0,
+                    displayName: name
+                ))
+                resetState()
+            }
+
+            currentModifierFlags = flags
+        }
+
         previousFlags = flags
-
-        guard isDown else { return }
-
-        let name = KeycodeNames.name(for: keyCode, isModifier: true)
-        onCapture?(CapturedKey(keycode: keyCode, isModifier: true, displayName: name))
     }
 
     override func keyDown(with event: NSEvent) {
@@ -64,15 +88,33 @@ class KeyCaptureNSView: NSView {
         // Escape cancels capture
         if keyCode == 0x35 {
             onCancel?()
+            resetState()
             return
         }
 
-        let name = KeycodeNames.name(for: keyCode, isModifier: false)
-        onCapture?(CapturedKey(keycode: keyCode, isModifier: false, displayName: name))
+        didPressNonModifier = true
+
+        let modFlags = extractCGEventModifierFlags(from: event.modifierFlags)
+        let displayName = buildDisplayName(modifierFlags: event.modifierFlags, triggerKeycode: keyCode)
+
+        onCapture?(CapturedCombo(
+            triggerKeycode: keyCode,
+            triggerIsModifier: false,
+            requiredModifierFlags: modFlags,
+            displayName: displayName
+        ))
+        resetState()
     }
 
     override func keyUp(with event: NSEvent) {
         // Swallow key-up events during capture to prevent system beep
+    }
+
+    private func resetState() {
+        didPressNonModifier = false
+        lastModifierKeycode = nil
+        currentModifierFlags = []
+        previousFlags = []
     }
 
     private func isModifierKeyDown(keyCode: Int64, flags: NSEvent.ModifierFlags) -> Bool {
@@ -92,6 +134,31 @@ class KeyCaptureNSView: NSView {
         }
     }
 }
+
+// MARK: - Display name building
+
+/// Build a display name in standard macOS order: Ctrl + Option + Shift + Cmd + Key
+func buildDisplayName(modifierFlags: NSEvent.ModifierFlags, triggerKeycode: Int64) -> String {
+    var parts: [String] = []
+    if modifierFlags.contains(.control) { parts.append("Ctrl") }
+    if modifierFlags.contains(.option)  { parts.append("Option") }
+    if modifierFlags.contains(.shift)   { parts.append("Shift") }
+    if modifierFlags.contains(.command) { parts.append("Cmd") }
+    parts.append(KeycodeNames.name(for: triggerKeycode, isModifier: false))
+    return parts.joined(separator: " + ")
+}
+
+/// Extract CGEventFlags bitmask from NSEvent.ModifierFlags (only modifier bits).
+func extractCGEventModifierFlags(from flags: NSEvent.ModifierFlags) -> UInt64 {
+    var result: UInt64 = 0
+    if flags.contains(.control) { result |= CGEventFlags.maskControl.rawValue }
+    if flags.contains(.option)  { result |= CGEventFlags.maskAlternate.rawValue }
+    if flags.contains(.shift)   { result |= CGEventFlags.maskShift.rawValue }
+    if flags.contains(.command) { result |= CGEventFlags.maskCommand.rawValue }
+    return result
+}
+
+// MARK: - Keycode Names
 
 enum KeycodeNames {
     private static let modifierNames: [Int64: String] = [

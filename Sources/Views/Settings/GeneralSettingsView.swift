@@ -8,7 +8,12 @@ struct GeneralSettingsView: View {
     @State private var isToggleMode: Bool = HotkeyOption.isToggleMode
     @State private var launchAtLogin: Bool = false
     @State private var isCapturingKey = false
-    @State private var capturedKeyName: String = HotkeyOption.savedCustomKeyName
+    @State private var customCombos: [CustomHotkeyCombo] = HotkeyOption.savedCustomCombos
+    @State private var activeComboId: UUID? = HotkeyOption.savedActiveCustomComboId
+
+    private var presets: [HotkeyOption] {
+        HotkeyOption.allCases.filter { $0 != .custom }
+    }
 
     var body: some View {
         ScrollView {
@@ -42,77 +47,90 @@ struct GeneralSettingsView: View {
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 4)
 
-                        Picker("Hotkey", selection: $selectedHotkey) {
-                            ForEach(HotkeyOption.allCases, id: \.self) { option in
-                                Text(option.keyName).tag(option)
-                            }
-                        }
-                        .pickerStyle(.radioGroup)
-                        .onChange(of: selectedHotkey) { _, newValue in
-                            if isCapturingKey {
-                                isCapturingKey = false
-                                NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
-                            }
-                            capturedKeyName = HotkeyOption.savedCustomKeyName
-                            HotkeyOption.saved = newValue
-                            NotificationCenter.default.post(
-                                name: .hotkeyChanged,
-                                object: nil,
-                                userInfo: ["hotkey": newValue]
+                        // Presets
+                        ForEach(presets, id: \.self) { option in
+                            hotkeyRow(
+                                label: option.keyName,
+                                isSelected: selectedHotkey == option,
+                                action: { selectPreset(option) }
                             )
                         }
 
-                        if selectedHotkey == .custom {
+                        if !customCombos.isEmpty {
+                            Divider()
+                                .padding(.vertical, 4)
+
+                            Text("Custom")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        // Custom combos
+                        ForEach(customCombos) { combo in
+                            HStack(spacing: 8) {
+                                hotkeyRow(
+                                    label: combo.displayName,
+                                    isSelected: selectedHotkey == .custom && activeComboId == combo.id,
+                                    action: { selectCustomCombo(combo) }
+                                )
+
+                                Button {
+                                    deleteCombo(combo)
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Remove this hotkey")
+                            }
+                        }
+
+                        // Add / Capture
+                        if isCapturingKey {
                             HStack(spacing: 8) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 6)
-                                        .stroke(isCapturingKey ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 1)
+                                        .stroke(Color.accentColor, lineWidth: 1)
                                         .background(
                                             RoundedRectangle(cornerRadius: 6)
                                                 .fill(Color(NSColor.textBackgroundColor))
                                         )
 
-                                    if isCapturingKey {
-                                        KeyCaptureView(
-                                            isCapturing: isCapturingKey,
-                                            onCapture: { key in
-                                                HotkeyOption.savedCustomKeycode = key.keycode
-                                                HotkeyOption.savedCustomKeyIsModifier = key.isModifier
-                                                HotkeyOption.savedCustomKeyName = key.displayName
-                                                capturedKeyName = key.displayName
-                                                isCapturingKey = false
-                                                NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
-                                                NotificationCenter.default.post(name: .hotkeyChanged, object: nil, userInfo: ["hotkey": HotkeyOption.custom])
-                                            },
-                                            onCancel: {
-                                                isCapturingKey = false
-                                                NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
-                                            }
-                                        )
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    }
+                                    KeyCaptureView(
+                                        isCapturing: true,
+                                        onCapture: { combo in
+                                            addCapturedCombo(combo)
+                                        },
+                                        onCancel: {
+                                            isCapturingKey = false
+                                            NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+                                        }
+                                    )
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                                    Text(isCapturingKey ? "Press any key (Esc to cancel)..." : (capturedKeyName.isEmpty ? "No key assigned" : capturedKeyName))
-                                        .foregroundStyle(isCapturingKey ? .secondary : .primary)
+                                    Text("Press a key or combo (Esc to cancel)...")
+                                        .foregroundStyle(.secondary)
                                         .font(.system(.body, design: .monospaced))
                                 }
                                 .frame(height: 28)
-                                .onTapGesture {
-                                    if !isCapturingKey {
-                                        isCapturingKey = true
-                                        NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": true])
-                                    }
-                                }
 
-                                if isCapturingKey {
-                                    Button("Cancel") {
-                                        isCapturingKey = false
-                                        NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
-                                    }
-                                    .buttonStyle(.bordered)
+                                Button("Cancel") {
+                                    isCapturingKey = false
+                                    NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
                                 }
+                                .buttonStyle(.bordered)
                             }
-                            .padding(.leading, 20)
+                            .padding(.top, 4)
+                        } else {
+                            Button {
+                                isCapturingKey = true
+                                NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": true])
+                            } label: {
+                                Label("Add Custom Combo...", systemImage: "plus.circle")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.top, 4)
                         }
 
                         Divider()
@@ -159,7 +177,8 @@ struct GeneralSettingsView: View {
         .onAppear {
             checkPermissions()
             launchAtLogin = SMAppService.mainApp.status == .enabled
-            capturedKeyName = HotkeyOption.savedCustomKeyName
+            customCombos = HotkeyOption.savedCustomCombos
+            activeComboId = HotkeyOption.savedActiveCustomComboId
         }
         .onDisappear {
             if isCapturingKey {
@@ -168,6 +187,87 @@ struct GeneralSettingsView: View {
             }
         }
     }
+
+    // MARK: - Subviews
+
+    @ViewBuilder
+    private func hotkeyRow(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: isSelected ? "circle.inset.filled" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .font(.body)
+                Text(label)
+                    .font(.system(.body, design: .default))
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Actions
+
+    private func selectPreset(_ option: HotkeyOption) {
+        if isCapturingKey {
+            isCapturingKey = false
+            NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+        }
+        selectedHotkey = option
+        HotkeyOption.saved = option
+        NotificationCenter.default.post(
+            name: .hotkeyChanged,
+            object: nil,
+            userInfo: ["hotkey": option]
+        )
+    }
+
+    private func selectCustomCombo(_ combo: CustomHotkeyCombo) {
+        if isCapturingKey {
+            isCapturingKey = false
+            NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+        }
+        selectedHotkey = .custom
+        activeComboId = combo.id
+        HotkeyOption.saved = .custom
+        HotkeyOption.savedActiveCustomComboId = combo.id
+        NotificationCenter.default.post(
+            name: .hotkeyChanged,
+            object: nil,
+            userInfo: ["hotkey": HotkeyOption.custom]
+        )
+    }
+
+    private func addCapturedCombo(_ captured: CapturedCombo) {
+        let combo = CustomHotkeyCombo(
+            triggerKeycode: captured.triggerKeycode,
+            triggerIsModifier: captured.triggerIsModifier,
+            requiredModifierFlags: captured.requiredModifierFlags,
+            displayName: captured.displayName
+        )
+        customCombos.append(combo)
+        HotkeyOption.savedCustomCombos = customCombos
+
+        isCapturingKey = false
+        NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+
+        // Auto-select the newly added combo
+        selectCustomCombo(combo)
+    }
+
+    private func deleteCombo(_ combo: CustomHotkeyCombo) {
+        customCombos.removeAll { $0.id == combo.id }
+        HotkeyOption.savedCustomCombos = customCombos
+
+        // If deleted combo was active, fall back to fnKey
+        if activeComboId == combo.id {
+            activeComboId = nil
+            HotkeyOption.savedActiveCustomComboId = nil
+            selectPreset(.fnKey)
+        }
+    }
+
+    // MARK: - Helpers
 
     private var hotkeyInstructionText: String {
         if isToggleMode {

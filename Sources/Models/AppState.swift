@@ -133,6 +133,25 @@ enum TranscriptionModel: String, CaseIterable {
     }
 }
 
+// MARK: - Custom Hotkey Combo
+
+struct CustomHotkeyCombo: Codable, Identifiable, Equatable, Hashable {
+    let id: UUID
+    let triggerKeycode: Int64
+    let triggerIsModifier: Bool
+    /// CGEventFlags bitmask of modifiers that must be held (0 for modifier-only combos)
+    let requiredModifierFlags: UInt64
+    let displayName: String
+
+    init(id: UUID = UUID(), triggerKeycode: Int64, triggerIsModifier: Bool, requiredModifierFlags: UInt64 = 0, displayName: String) {
+        self.id = id
+        self.triggerKeycode = triggerKeycode
+        self.triggerIsModifier = triggerIsModifier
+        self.requiredModifierFlags = requiredModifierFlags
+        self.displayName = displayName
+    }
+}
+
 enum HotkeyOption: String, CaseIterable {
     case fnKey = "fn"
     case rightOption = "rightOption"
@@ -150,35 +169,44 @@ enum HotkeyOption: String, CaseIterable {
         case .hyperKey: return "Hyper Key – Ctrl+Opt+Cmd+Shift"
         case .ctrlOptionSpace: return "Ctrl+Option+Space"
         case .custom:
-            let name = Self.savedCustomKeyName
-            return name.isEmpty ? "Custom Key" : name
+            return Self.activeCustomCombo?.displayName ?? "Custom Key"
         }
     }
 
-    // MARK: - Custom key UserDefaults storage
+    // MARK: - Custom combo UserDefaults storage
 
-    static var savedCustomKeycode: Int64? {
+    static var savedCustomCombos: [CustomHotkeyCombo] {
         get {
-            guard UserDefaults.standard.object(forKey: "customHotkeyKeycode") != nil else { return nil }
-            return Int64(UserDefaults.standard.integer(forKey: "customHotkeyKeycode"))
+            guard let data = UserDefaults.standard.data(forKey: "customHotkeyCombos"),
+                  let combos = try? JSONDecoder().decode([CustomHotkeyCombo].self, from: data) else {
+                return []
+            }
+            return combos
         }
         set {
-            if let value = newValue {
-                UserDefaults.standard.set(Int(value), forKey: "customHotkeyKeycode")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "customHotkeyKeycode")
+            if let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: "customHotkeyCombos")
             }
         }
     }
 
-    static var savedCustomKeyIsModifier: Bool {
-        get { UserDefaults.standard.bool(forKey: "customHotkeyIsModifier") }
-        set { UserDefaults.standard.set(newValue, forKey: "customHotkeyIsModifier") }
+    static var savedActiveCustomComboId: UUID? {
+        get {
+            guard let str = UserDefaults.standard.string(forKey: "activeCustomComboId") else { return nil }
+            return UUID(uuidString: str)
+        }
+        set {
+            if let id = newValue {
+                UserDefaults.standard.set(id.uuidString, forKey: "activeCustomComboId")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "activeCustomComboId")
+            }
+        }
     }
 
-    static var savedCustomKeyName: String {
-        get { UserDefaults.standard.string(forKey: "customHotkeyName") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "customHotkeyName") }
+    static var activeCustomCombo: CustomHotkeyCombo? {
+        guard let id = savedActiveCustomComboId else { return nil }
+        return savedCustomCombos.first { $0.id == id }
     }
 
     /// Display name including the current mode suffix.
@@ -212,6 +240,36 @@ enum HotkeyOption: String, CaseIterable {
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: "hotkeyOption")
         }
+    }
+
+    /// Migrate old single-key custom hotkey to the new combo list format.
+    static func migrateCustomHotkeyIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: "didMigrateCustomHotkeyToCombo") else { return }
+        UserDefaults.standard.set(true, forKey: "didMigrateCustomHotkeyToCombo")
+
+        // Read old keys
+        guard UserDefaults.standard.object(forKey: "customHotkeyKeycode") != nil else { return }
+        let keycode = Int64(UserDefaults.standard.integer(forKey: "customHotkeyKeycode"))
+        let isModifier = UserDefaults.standard.bool(forKey: "customHotkeyIsModifier")
+        let name = UserDefaults.standard.string(forKey: "customHotkeyName") ?? ""
+        guard !name.isEmpty else { return }
+
+        let combo = CustomHotkeyCombo(
+            triggerKeycode: keycode,
+            triggerIsModifier: isModifier,
+            requiredModifierFlags: 0,
+            displayName: name
+        )
+
+        var combos = savedCustomCombos
+        combos.append(combo)
+        savedCustomCombos = combos
+        savedActiveCustomComboId = combo.id
+
+        // Clean up old keys
+        UserDefaults.standard.removeObject(forKey: "customHotkeyKeycode")
+        UserDefaults.standard.removeObject(forKey: "customHotkeyIsModifier")
+        UserDefaults.standard.removeObject(forKey: "customHotkeyName")
     }
 }
 
@@ -308,6 +366,8 @@ class AppState: ObservableObject {
     private init() {
         // Migrate legacy models from ~/Documents/huggingface if needed
         Self.migrateModelsFromLegacyLocationIfNeeded()
+        // Migrate old single-key custom hotkey to combo list
+        HotkeyOption.migrateCustomHotkeyIfNeeded()
 
         refreshDownloadedModels()
         dictionaryState.load()

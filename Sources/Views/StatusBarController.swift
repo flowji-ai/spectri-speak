@@ -79,7 +79,11 @@ class StatusBarController {
         // Hotkey submenu
         let hotkeyMenu = NSMenu()
         let modeSuffix = HotkeyOption.isToggleMode ? "(press twice)" : "(hold)"
-        for option in HotkeyOption.allCases {
+        let currentSaved = HotkeyOption.saved
+        let currentComboId = HotkeyOption.savedActiveCustomComboId
+
+        // Presets (exclude .custom — it's represented by the combo items below)
+        for option in HotkeyOption.allCases where option != .custom {
             let item = NSMenuItem(
                 title: "\(option.keyName) \(modeSuffix)",
                 action: #selector(hotkeySelected(_:)),
@@ -87,8 +91,25 @@ class StatusBarController {
             )
             item.target = self
             item.representedObject = option
-            item.state = (option == HotkeyOption.saved) ? .on : .off
+            item.state = (option == currentSaved) ? .on : .off
             hotkeyMenu.addItem(item)
+        }
+
+        // Custom combos
+        let customCombos = HotkeyOption.savedCustomCombos
+        if !customCombos.isEmpty {
+            hotkeyMenu.addItem(NSMenuItem.separator())
+            for combo in customCombos {
+                let item = NSMenuItem(
+                    title: "\(combo.displayName) \(modeSuffix)",
+                    action: #selector(customComboSelected(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = combo.id.uuidString as NSString
+                item.state = (currentSaved == .custom && currentComboId == combo.id) ? .on : .off
+                hotkeyMenu.addItem(item)
+            }
         }
 
         hotkeyMenu.addItem(NSMenuItem.separator())
@@ -183,16 +204,16 @@ class StatusBarController {
 
     @objc private func hotkeySelected(_ sender: NSMenuItem) {
         guard let option = sender.representedObject as? HotkeyOption else { return }
-
-        // Update checkmarks
-        if let menu = sender.menu {
-            for item in menu.items {
-                item.state = (item.representedObject as? HotkeyOption == option) ? .on : .off
-            }
-        }
-
-        // Update the hotkey
         dictationController?.updateHotkey(option)
+        setupMenu()
+    }
+
+    @objc private func customComboSelected(_ sender: NSMenuItem) {
+        guard let idString = sender.representedObject as? NSString,
+              let uuid = UUID(uuidString: idString as String) else { return }
+        HotkeyOption.savedActiveCustomComboId = uuid
+        dictationController?.updateHotkey(.custom)
+        setupMenu()
     }
 
     @objc private func togglePressTwice(_ sender: NSMenuItem) {

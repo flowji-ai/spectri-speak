@@ -8,6 +8,9 @@ class HotkeyManager {
     private var hotkeyOption: HotkeyOption
     private var isToggleMode: Bool
 
+    /// Resolved custom combo (when hotkeyOption == .custom)
+    private var activeCombo: CustomHotkeyCombo?
+
     // Keycodes for distinguishing left/right modifier keys
     private let kVK_RightOption: Int64 = 0x3D
     private let kVK_RightCommand: Int64 = 0x36
@@ -29,6 +32,9 @@ class HotkeyManager {
     init(hotkeyOption: HotkeyOption = HotkeyOption.saved) {
         self.hotkeyOption = hotkeyOption
         self.isToggleMode = HotkeyOption.isToggleMode
+        if hotkeyOption == .custom {
+            self.activeCombo = HotkeyOption.activeCustomCombo
+        }
     }
 
     func start() -> Bool {
@@ -47,8 +53,8 @@ class HotkeyManager {
             eventMask |= (1 << CGEventType.keyUp.rawValue)
         }
 
-        // For custom non-modifier keys, we need key down/up events
-        if hotkeyOption == .custom && !HotkeyOption.savedCustomKeyIsModifier {
+        // For custom non-modifier combos, we need key down/up events
+        if hotkeyOption == .custom, let combo = activeCombo, !combo.triggerIsModifier {
             eventMask |= (1 << CGEventType.keyDown.rawValue)
             eventMask |= (1 << CGEventType.keyUp.rawValue)
         }
@@ -134,12 +140,13 @@ class HotkeyManager {
             }
 
         case .custom:
-            guard let customKeycode = HotkeyOption.savedCustomKeycode else { break }
+            guard let combo = activeCombo else { break }
 
-            if HotkeyOption.savedCustomKeyIsModifier {
+            if combo.triggerIsModifier {
+                // Modifier-only combo (e.g. Right Option, Right Shift)
                 if type == .flagsChanged {
-                    let flagSet = modifierFlagIsSet(for: customKeycode, flags: flags)
-                    if keyCode == customKeycode {
+                    let flagSet = modifierFlagIsSet(for: combo.triggerKeycode, flags: flags)
+                    if keyCode == combo.triggerKeycode {
                         hotkeyPressed = flagSet
                     } else if isHotkeyActive && flagSet {
                         // Hold-continuity: another modifier changed but ours is still held
@@ -147,9 +154,13 @@ class HotkeyManager {
                     }
                 }
             } else {
-                if type == .keyDown && keyCode == customKeycode {
+                // Key + modifiers combo (e.g. Cmd+Shift+K)
+                let requiredFlags = CGEventFlags(rawValue: combo.requiredModifierFlags)
+                let hasRequiredModifiers = combo.requiredModifierFlags == 0 || flags.contains(requiredFlags)
+
+                if type == .keyDown && keyCode == combo.triggerKeycode && hasRequiredModifiers {
                     hotkeyPressed = true
-                } else if type == .keyUp && keyCode == customKeycode {
+                } else if type == .keyUp && keyCode == combo.triggerKeycode {
                     hotkeyPressed = false
                 } else if isHotkeyActive && type != .keyUp {
                     hotkeyPressed = true
@@ -256,6 +267,11 @@ class HotkeyManager {
         stop()
         hotkeyOption = option
         HotkeyOption.saved = option
+        if option == .custom {
+            activeCombo = HotkeyOption.activeCustomCombo
+        } else {
+            activeCombo = nil
+        }
         _ = start()
     }
 

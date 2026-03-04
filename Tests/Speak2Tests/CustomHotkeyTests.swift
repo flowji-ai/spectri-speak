@@ -1,5 +1,6 @@
 import XCTest
 import CoreGraphics
+import AppKit
 @testable import Speak2
 
 final class KeycodeNamesTests: XCTestCase {
@@ -175,63 +176,215 @@ final class ModifierFlagIsSetTests: XCTestCase {
     }
 }
 
-// MARK: - Custom keycode UserDefaults tests
+// MARK: - CustomHotkeyCombo tests
 
-final class CustomKeycodeStorageTests: XCTestCase {
+final class CustomHotkeyComboTests: XCTestCase {
+
+    func testJSONRoundTrip() throws {
+        let combo = CustomHotkeyCombo(
+            triggerKeycode: 0x28,
+            triggerIsModifier: false,
+            requiredModifierFlags: CGEventFlags.maskCommand.rawValue | CGEventFlags.maskShift.rawValue,
+            displayName: "Cmd + Shift + K"
+        )
+
+        let data = try JSONEncoder().encode(combo)
+        let decoded = try JSONDecoder().decode(CustomHotkeyCombo.self, from: data)
+
+        XCTAssertEqual(decoded.id, combo.id)
+        XCTAssertEqual(decoded.triggerKeycode, 0x28)
+        XCTAssertFalse(decoded.triggerIsModifier)
+        XCTAssertEqual(decoded.requiredModifierFlags, combo.requiredModifierFlags)
+        XCTAssertEqual(decoded.displayName, "Cmd + Shift + K")
+    }
+
+    func testJSONRoundTripModifierOnly() throws {
+        let combo = CustomHotkeyCombo(
+            triggerKeycode: 0x3D,
+            triggerIsModifier: true,
+            requiredModifierFlags: 0,
+            displayName: "Right Option"
+        )
+
+        let data = try JSONEncoder().encode(combo)
+        let decoded = try JSONDecoder().decode(CustomHotkeyCombo.self, from: data)
+
+        XCTAssertEqual(decoded, combo)
+        XCTAssertTrue(decoded.triggerIsModifier)
+        XCTAssertEqual(decoded.requiredModifierFlags, 0)
+    }
+
+    func testJSONArrayRoundTrip() throws {
+        let combos = [
+            CustomHotkeyCombo(triggerKeycode: 0x28, triggerIsModifier: false,
+                              requiredModifierFlags: CGEventFlags.maskCommand.rawValue,
+                              displayName: "Cmd + K"),
+            CustomHotkeyCombo(triggerKeycode: 0x3D, triggerIsModifier: true,
+                              requiredModifierFlags: 0, displayName: "Right Option"),
+        ]
+
+        let data = try JSONEncoder().encode(combos)
+        let decoded = try JSONDecoder().decode([CustomHotkeyCombo].self, from: data)
+
+        XCTAssertEqual(decoded.count, 2)
+        XCTAssertEqual(decoded[0].displayName, "Cmd + K")
+        XCTAssertEqual(decoded[1].displayName, "Right Option")
+    }
+
+    func testEquality() {
+        let id = UUID()
+        let a = CustomHotkeyCombo(id: id, triggerKeycode: 0x28, triggerIsModifier: false,
+                                  requiredModifierFlags: 0, displayName: "K")
+        let b = CustomHotkeyCombo(id: id, triggerKeycode: 0x28, triggerIsModifier: false,
+                                  requiredModifierFlags: 0, displayName: "K")
+        let c = CustomHotkeyCombo(triggerKeycode: 0x28, triggerIsModifier: false,
+                                  requiredModifierFlags: 0, displayName: "K")
+
+        XCTAssertEqual(a, b)
+        XCTAssertNotEqual(a, c) // Different UUID
+    }
+
+    func testHashable() {
+        let combo = CustomHotkeyCombo(triggerKeycode: 0x28, triggerIsModifier: false,
+                                      requiredModifierFlags: 0, displayName: "K")
+        var set = Set<CustomHotkeyCombo>()
+        set.insert(combo)
+        set.insert(combo) // Duplicate
+        XCTAssertEqual(set.count, 1)
+    }
+}
+
+// MARK: - Custom combo UserDefaults storage tests
+
+final class CustomComboStorageTests: XCTestCase {
 
     override func tearDown() {
         super.tearDown()
-        UserDefaults.standard.removeObject(forKey: "customHotkeyKeycode")
-        UserDefaults.standard.removeObject(forKey: "customHotkeyIsModifier")
-        UserDefaults.standard.removeObject(forKey: "customHotkeyName")
+        UserDefaults.standard.removeObject(forKey: "customHotkeyCombos")
+        UserDefaults.standard.removeObject(forKey: "activeCustomComboId")
     }
 
-    func testSavedCustomKeycodeDefaultsToNil() {
-        UserDefaults.standard.removeObject(forKey: "customHotkeyKeycode")
-        XCTAssertNil(HotkeyOption.savedCustomKeycode)
+    func testSavedCustomCombosDefaultsToEmpty() {
+        UserDefaults.standard.removeObject(forKey: "customHotkeyCombos")
+        XCTAssertEqual(HotkeyOption.savedCustomCombos.count, 0)
     }
 
-    func testSavedCustomKeycodeRoundTrips() {
-        HotkeyOption.savedCustomKeycode = 0x37
-        XCTAssertEqual(HotkeyOption.savedCustomKeycode, 0x37)
-
-        HotkeyOption.savedCustomKeycode = 0x00
-        XCTAssertEqual(HotkeyOption.savedCustomKeycode, 0x00)
+    func testSavedCustomCombosRoundTrips() {
+        let combos = [
+            CustomHotkeyCombo(triggerKeycode: 0x28, triggerIsModifier: false,
+                              requiredModifierFlags: CGEventFlags.maskCommand.rawValue,
+                              displayName: "Cmd + K"),
+        ]
+        HotkeyOption.savedCustomCombos = combos
+        let loaded = HotkeyOption.savedCustomCombos
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded[0].id, combos[0].id)
+        XCTAssertEqual(loaded[0].displayName, "Cmd + K")
     }
 
-    func testSavedCustomKeycodeSetNilClearsStorage() {
-        HotkeyOption.savedCustomKeycode = 0x37
-        XCTAssertNotNil(HotkeyOption.savedCustomKeycode)
-
-        HotkeyOption.savedCustomKeycode = nil
-        XCTAssertNil(HotkeyOption.savedCustomKeycode)
+    func testSavedActiveCustomComboIdDefaultsToNil() {
+        UserDefaults.standard.removeObject(forKey: "activeCustomComboId")
+        XCTAssertNil(HotkeyOption.savedActiveCustomComboId)
     }
 
-    func testSavedCustomKeyIsModifierRoundTrips() {
-        HotkeyOption.savedCustomKeyIsModifier = true
-        XCTAssertTrue(HotkeyOption.savedCustomKeyIsModifier)
-
-        HotkeyOption.savedCustomKeyIsModifier = false
-        XCTAssertFalse(HotkeyOption.savedCustomKeyIsModifier)
+    func testSavedActiveCustomComboIdRoundTrips() {
+        let id = UUID()
+        HotkeyOption.savedActiveCustomComboId = id
+        XCTAssertEqual(HotkeyOption.savedActiveCustomComboId, id)
     }
 
-    func testSavedCustomKeyNameRoundTrips() {
-        HotkeyOption.savedCustomKeyName = "Left Command"
-        XCTAssertEqual(HotkeyOption.savedCustomKeyName, "Left Command")
+    func testSavedActiveCustomComboIdSetNilClears() {
+        HotkeyOption.savedActiveCustomComboId = UUID()
+        HotkeyOption.savedActiveCustomComboId = nil
+        XCTAssertNil(HotkeyOption.savedActiveCustomComboId)
     }
 
-    func testSavedCustomKeyNameDefaultsToEmpty() {
-        UserDefaults.standard.removeObject(forKey: "customHotkeyName")
-        XCTAssertEqual(HotkeyOption.savedCustomKeyName, "")
+    func testActiveCustomComboResolvesFromList() {
+        let combo = CustomHotkeyCombo(triggerKeycode: 0x3D, triggerIsModifier: true,
+                                      requiredModifierFlags: 0, displayName: "Right Option")
+        HotkeyOption.savedCustomCombos = [combo]
+        HotkeyOption.savedActiveCustomComboId = combo.id
+        XCTAssertEqual(HotkeyOption.activeCustomCombo, combo)
     }
 
-    func testCustomKeyNameShowsInHotkeyKeyName() {
-        HotkeyOption.savedCustomKeyName = "Right Shift"
-        XCTAssertEqual(HotkeyOption.custom.keyName, "Right Shift")
+    func testActiveCustomComboReturnsNilWhenIdNotInList() {
+        HotkeyOption.savedCustomCombos = []
+        HotkeyOption.savedActiveCustomComboId = UUID()
+        XCTAssertNil(HotkeyOption.activeCustomCombo)
     }
 
-    func testCustomKeyNameFallbackWhenEmpty() {
-        HotkeyOption.savedCustomKeyName = ""
+    func testCustomKeyNameShowsActiveComboDisplayName() {
+        let combo = CustomHotkeyCombo(triggerKeycode: 0x28, triggerIsModifier: false,
+                                      requiredModifierFlags: CGEventFlags.maskCommand.rawValue,
+                                      displayName: "Cmd + K")
+        HotkeyOption.savedCustomCombos = [combo]
+        HotkeyOption.savedActiveCustomComboId = combo.id
+        XCTAssertEqual(HotkeyOption.custom.keyName, "Cmd + K")
+    }
+
+    func testCustomKeyNameFallbackWhenNoActiveCombo() {
+        HotkeyOption.savedCustomCombos = []
+        HotkeyOption.savedActiveCustomComboId = nil
         XCTAssertEqual(HotkeyOption.custom.keyName, "Custom Key")
+    }
+}
+
+// MARK: - Display name building tests
+
+final class BuildDisplayNameTests: XCTestCase {
+
+    func testKeyOnly() {
+        let flags = NSEvent.ModifierFlags()
+        XCTAssertEqual(buildDisplayName(modifierFlags: flags, triggerKeycode: 0x28), "K")
+    }
+
+    func testCmdKey() {
+        let flags = NSEvent.ModifierFlags.command
+        XCTAssertEqual(buildDisplayName(modifierFlags: flags, triggerKeycode: 0x28), "Cmd + K")
+    }
+
+    func testCmdShiftKey() {
+        let flags: NSEvent.ModifierFlags = [.command, .shift]
+        XCTAssertEqual(buildDisplayName(modifierFlags: flags, triggerKeycode: 0x28), "Shift + Cmd + K")
+    }
+
+    func testAllModifiers() {
+        let flags: NSEvent.ModifierFlags = [.control, .option, .shift, .command]
+        XCTAssertEqual(buildDisplayName(modifierFlags: flags, triggerKeycode: 0x31), "Ctrl + Option + Shift + Cmd + Space")
+    }
+
+    func testCtrlOptionSpace() {
+        let flags: NSEvent.ModifierFlags = [.control, .option]
+        XCTAssertEqual(buildDisplayName(modifierFlags: flags, triggerKeycode: 0x31), "Ctrl + Option + Space")
+    }
+}
+
+// MARK: - Extract CGEventFlags tests
+
+final class ExtractCGEventModifierFlagsTests: XCTestCase {
+
+    func testNoModifiers() {
+        let result = extractCGEventModifierFlags(from: NSEvent.ModifierFlags())
+        XCTAssertEqual(result, 0)
+    }
+
+    func testCommand() {
+        let result = extractCGEventModifierFlags(from: .command)
+        XCTAssertEqual(result, CGEventFlags.maskCommand.rawValue)
+    }
+
+    func testMultipleModifiers() {
+        let flags: NSEvent.ModifierFlags = [.command, .shift]
+        let result = extractCGEventModifierFlags(from: flags)
+        let expected = CGEventFlags.maskCommand.rawValue | CGEventFlags.maskShift.rawValue
+        XCTAssertEqual(result, expected)
+    }
+
+    func testAllFourModifiers() {
+        let flags: NSEvent.ModifierFlags = [.control, .option, .shift, .command]
+        let result = extractCGEventModifierFlags(from: flags)
+        let expected = CGEventFlags.maskControl.rawValue | CGEventFlags.maskAlternate.rawValue
+            | CGEventFlags.maskShift.rawValue | CGEventFlags.maskCommand.rawValue
+        XCTAssertEqual(result, expected)
     }
 }

@@ -7,6 +7,8 @@ struct GeneralSettingsView: View {
     @State private var selectedHotkey: HotkeyOption = HotkeyOption.saved
     @State private var isToggleMode: Bool = HotkeyOption.isToggleMode
     @State private var launchAtLogin: Bool = false
+    @State private var isCapturingKey = false
+    @State private var capturedKeyName: String = HotkeyOption.savedCustomKeyName
 
     var body: some View {
         ScrollView {
@@ -47,12 +49,70 @@ struct GeneralSettingsView: View {
                         }
                         .pickerStyle(.radioGroup)
                         .onChange(of: selectedHotkey) { _, newValue in
+                            if isCapturingKey {
+                                isCapturingKey = false
+                                NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+                            }
+                            capturedKeyName = HotkeyOption.savedCustomKeyName
                             HotkeyOption.saved = newValue
                             NotificationCenter.default.post(
                                 name: .hotkeyChanged,
                                 object: nil,
                                 userInfo: ["hotkey": newValue]
                             )
+                        }
+
+                        if selectedHotkey == .custom {
+                            HStack(spacing: 8) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(isCapturingKey ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 1)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(Color(NSColor.textBackgroundColor))
+                                        )
+
+                                    if isCapturingKey {
+                                        KeyCaptureView(
+                                            isCapturing: isCapturingKey,
+                                            onCapture: { key in
+                                                HotkeyOption.savedCustomKeycode = key.keycode
+                                                HotkeyOption.savedCustomKeyIsModifier = key.isModifier
+                                                HotkeyOption.savedCustomKeyName = key.displayName
+                                                capturedKeyName = key.displayName
+                                                isCapturingKey = false
+                                                NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+                                                NotificationCenter.default.post(name: .hotkeyChanged, object: nil, userInfo: ["hotkey": HotkeyOption.custom])
+                                            },
+                                            onCancel: {
+                                                isCapturingKey = false
+                                                NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+                                            }
+                                        )
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    }
+
+                                    Text(isCapturingKey ? "Press any key (Esc to cancel)..." : (capturedKeyName.isEmpty ? "No key assigned" : capturedKeyName))
+                                        .foregroundStyle(isCapturingKey ? .secondary : .primary)
+                                        .font(.system(.body, design: .monospaced))
+                                }
+                                .frame(height: 28)
+                                .onTapGesture {
+                                    if !isCapturingKey {
+                                        isCapturingKey = true
+                                        NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": true])
+                                    }
+                                }
+
+                                if isCapturingKey {
+                                    Button("Cancel") {
+                                        isCapturingKey = false
+                                        NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                            .padding(.leading, 20)
                         }
 
                         Divider()
@@ -99,6 +159,13 @@ struct GeneralSettingsView: View {
         .onAppear {
             checkPermissions()
             launchAtLogin = SMAppService.mainApp.status == .enabled
+            capturedKeyName = HotkeyOption.savedCustomKeyName
+        }
+        .onDisappear {
+            if isCapturingKey {
+                isCapturingKey = false
+                NotificationCenter.default.post(name: .hotkeyCaptureModeChanged, object: nil, userInfo: ["capturing": false])
+            }
         }
     }
 
@@ -213,4 +280,5 @@ struct PermissionSettingsRow: View {
 extension Notification.Name {
     static let hotkeyChanged = Notification.Name("hotkeyChanged")
     static let hotkeyToggleModeChanged = Notification.Name("hotkeyToggleModeChanged")
+    static let hotkeyCaptureModeChanged = Notification.Name("hotkeyCaptureModeChanged")
 }

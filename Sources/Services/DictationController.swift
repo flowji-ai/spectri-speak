@@ -28,6 +28,14 @@ class DictationController {
         configureHotkeyCallbacks()
     }
 
+    func suspendHotkey() {
+        hotkeyManager.suspend()
+    }
+
+    func resumeHotkey() {
+        hotkeyManager.resume()
+    }
+
     /// Load the selected model (or specified model)
     func loadModel(_ model: TranscriptionModel? = nil) async throws {
         let targetModel = model ?? appState.selectedModel

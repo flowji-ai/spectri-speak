@@ -99,6 +99,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
+        // Listen for key capture mode changes (suspend/resume hotkey)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCaptureModeChanged(_:)),
+            name: .hotkeyCaptureModeChanged,
+            object: nil
+        )
+
         // Observe setup completion to start dictation
         observeSetupCompletion()
 
@@ -148,6 +156,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func handleToggleModeChanged() {
         Task { @MainActor in
             dictationController?.updateToggleMode(HotkeyOption.isToggleMode)
+        }
+    }
+
+    @objc private func handleCaptureModeChanged(_ notification: Notification) {
+        let capturing = notification.userInfo?["capturing"] as? Bool ?? false
+        Task { @MainActor in
+            if capturing {
+                dictationController?.suspendHotkey()
+            } else {
+                dictationController?.resumeHotkey()
+            }
         }
     }
 

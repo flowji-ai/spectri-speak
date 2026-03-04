@@ -79,6 +79,10 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
 
     private var whisperKit: WhisperKit?
     private var isLoading = false
+    /// True when the loaded model supports multiple languages (e.g. large-v3).
+    /// When true, DecodingOptions.detectLanguage is set so Whisper transcribes
+    /// in the spoken language instead of defaulting to English.
+    private var isMultilingual = false
 
     // MARK: - Streaming properties
     private var audioEngine: AVAudioEngine?
@@ -125,6 +129,7 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
         )
 
         whisperKit = try await WhisperKit(config)
+        isMultilingual = !variant.contains(".en")
         return modelFolder
     }
 
@@ -164,9 +169,14 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
 
         var results: [TranscriptionResult]
 
+        // Build decode options — auto-detect language for multilingual models
+        var decodeOptions = DecodingOptions()
+        if isMultilingual {
+            decodeOptions.detectLanguage = true
+        }
+
         // Try with vocabulary hint first if provided
         if let hint = dictionaryHint, !hint.isEmpty {
-            var decodeOptions = DecodingOptions()
             decodeOptions.promptTokens = whisperKit.tokenizer?.encode(text: hint)
 
             results = try await whisperKit.transcribe(
@@ -176,10 +186,12 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
 
             // Fallback: if promptTokens caused empty results, retry without
             if results.isEmpty || results.allSatisfy({ $0.text.trimmingCharacters(in: .whitespaces).isEmpty }) {
-                results = try await whisperKit.transcribe(audioPath: audioURL.path)
+                var fallbackOptions = DecodingOptions()
+                if isMultilingual { fallbackOptions.detectLanguage = true }
+                results = try await whisperKit.transcribe(audioPath: audioURL.path, decodeOptions: fallbackOptions)
             }
         } else {
-            results = try await whisperKit.transcribe(audioPath: audioURL.path)
+            results = try await whisperKit.transcribe(audioPath: audioURL.path, decodeOptions: decodeOptions)
         }
 
         let transcription = results
@@ -205,9 +217,12 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
             throw TranscriptionEngineError.modelNotLoaded
         }
 
-        // Build decode options
+        // Build decode options — auto-detect language for multilingual models
         var decodeOptions = DecodingOptions()
         decodeOptions.skipSpecialTokens = true
+        if isMultilingual {
+            decodeOptions.detectLanguage = true
+        }
         if let hint = dictionaryHint, !hint.isEmpty,
            let tokenizer = whisperKit.tokenizer {
             decodeOptions.promptTokens = tokenizer.encode(text: hint)
@@ -305,9 +320,15 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
         let capturedMinSamples = minTranscriptionSamples
         let capturedMaxSamples = maxStreamingSamples
 
-        // Note: decodeOptions (dictionary hints) are NOT used for intermediate streaming
-        // passes — transcribe(audioArray:decodeOptions:) returns empty with promptTokens.
-        // Dictionary hints are applied only in the final file-based transcription.
+        // Build lightweight decode options for streaming passes.
+        // promptTokens cause empty results with audioArray, so only set detectLanguage.
+        var streamingDecodeOptions: DecodingOptions?
+        if isMultilingual {
+            var opts = DecodingOptions()
+            opts.skipSpecialTokens = true
+            opts.detectLanguage = true
+            streamingDecodeOptions = opts
+        }
 
         streamingTask = Task {
             var previousText = ""
@@ -328,9 +349,17 @@ actor WhisperTranscriber: TranscriptionEngine, StreamingTranscriptionEngine {
 
                 do {
                     let startTime = CFAbsoluteTimeGetCurrent()
-                    let results = try await capturedWhisperKit.transcribe(
-                        audioArray: samples
-                    )
+                    let results: [TranscriptionResult]
+                    if let opts = streamingDecodeOptions {
+                        results = try await capturedWhisperKit.transcribe(
+                            audioArray: samples,
+                            decodeOptions: opts
+                        )
+                    } else {
+                        results = try await capturedWhisperKit.transcribe(
+                            audioArray: samples
+                        )
+                    }
                     let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
                     let currentText = results

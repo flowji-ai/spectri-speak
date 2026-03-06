@@ -409,6 +409,10 @@ If a multilingual Whisper model (large-v3, large-v3 turbo) is translating your s
 - CGEvent for global hotkey detection
 - Accelerate (vDSP) for audio level analysis
 
+## See Also
+
+- **[Listen2](https://apps.apple.com/us/app/listen-2-reader/id6755753624)** — On-device text-to-speech for macOS. The companion to Speak2.
+
 ## License
 
 MIT

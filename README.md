@@ -4,6 +4,8 @@ Local voice dictation for macOS. Hold the fn key (configurable) to speak, releas
 
 100% on-device using [WhisperKit](https://github.com/argmaxinc/WhisperKit) or [Parakeet](https://github.com/FluidInference/FluidAudio) - no cloud services, no data leaves your Mac.
 
+**[User Guide](https://moonquakemedia.com/guides/speak2/)** — Complete documentation for setup, dictation, models, dictionary, AI refinement, and more.
+
 ## Features
 
 - **Push-to-talk or toggle dictation** - Hold a hotkey to record, or double-press to toggle on/off

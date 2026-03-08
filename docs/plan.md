@@ -3,9 +3,10 @@ Date Created: 2026-03-08T00:15:00Z
 Date Updated: 2026-03-08T00:15:00Z
 ---
 
-# Speak2 Fork — Development Plan
+# Spectri Speak — Development Plan
 
 Fork of [zachswift615/speak2](https://github.com/zachswift615/speak2) (v1.6.0, MIT license).
+**GitHub**: [flowji-ai/spectri-speak](https://github.com/flowji-ai/spectri-speak)
 
 ## Why We Forked
 
@@ -31,7 +32,7 @@ Speak2 is an excellent local macOS dictation app (Parakeet + Whisper, on-device 
 - **CLI interface** — `speak2 dict add "word" --aliases "alias1,alias2" --category name` for adding words from terminal or agent scripts.
 - **Unix socket / local API** — lightweight IPC so running agents (Claude Code, OpenCode) can add dictionary entries without restarting the app.
 - **File watcher** — watch `personal_dictionary.json` for changes and reload automatically. Simplest approach if CLI/API is complex.
-- **Agent skill** — Claude Code skill at `~/.claude/skills/speak2-dictionary/` that calls the CLI or writes to the JSON + triggers reload.
+- **Agent skill** — Claude Code skill (`spectri-speak-dictionary`) that calls the CLI or writes to the JSON + triggers reload. Source at skills-research prototypes folder, deployed via `skill-deployment` skill. Important: dictionary entries that can be confused with single-syllable plain English words (e.g. VBOUT → "but", PRD → "word") will cause constant false positives — the skill should warn about this.
 
 ### Priority 3: Upstream Sync
 

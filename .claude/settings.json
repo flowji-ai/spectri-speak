@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__brave-search__brave_web_search",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:cookbook.openai.com)",
+      "WebFetch(domain:developers.openai.com)",
+      "WebFetch(domain:app.argmaxinc.com)",
+      "Bash(pipx --version)",
+      "Bash(spectri --help)",
+      "Bash(git add:*)"
+    ]
+  }
+}

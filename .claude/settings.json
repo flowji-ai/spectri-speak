@@ -9,7 +9,10 @@
       "WebFetch(domain:app.argmaxinc.com)",
       "Bash(pipx --version)",
       "Bash(spectri --help)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(spectri init:*)",
+      "Bash(spectri sync-canonical:*)"
     ]
   }
 }

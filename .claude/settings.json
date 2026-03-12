@@ -12,7 +12,12 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(spectri init:*)",
-      "Bash(spectri sync-canonical:*)"
+      "Bash(spectri sync-canonical:*)",
+      "Bash(git mv:*)",
+      "Bash(find /Users/ostiimac/Forge/primary-vault -type f -name *SPECTRI* -o -name *spectri*)",
+      "mcp__pal__consensus",
+      "mcp__pal__chat",
+      "Bash(bash /Users/ostiimac/Forge/primary-vault/04-REPOSITORIES/04-REPOS-Spectri/spectri-speak/.spectri/scripts/spectri-trail/create-llm-plan.sh --title \"Documentation Decomposition Pilot\" --slug \"doc-decomposition-pilot\" --original direct --agent claude --json)"
     ]
   }
 }
